@@ -4,7 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "tqdm-color"
-dynamic = ["version"]
+# dynamic = ["version"]
+version = "0.1.0"
 description = 'Enhance tqdm progress bars with colored segments'
 readme = "README.md"
 requires-python = ">=3.8"
@@ -24,15 +25,13 @@ classifiers = [
   "Programming Language :: Python :: Implementation :: CPython",
   "Programming Language :: Python :: Implementation :: PyPy",
 ]
-dependencies = ["tqdm"]
+dependencies = ["tqdm", "numpy"]
 
 [project.urls]
 Documentation = "https://github.com/Colin Moldenhauer/tqdm-color#readme"
 Issues = "https://github.com/Colin Moldenhauer/tqdm-color/issues"
 Source = "https://github.com/Colin Moldenhauer/tqdm-color"
 
-[tool.hatch.version]
-path = "src/tqdm_color/__about__.py"
 
 [tool.hatch.envs.types]
 extra-dependencies = [

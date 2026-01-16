@@ -1,6 +1,6 @@
-from collections import defaultdict
 import sys
 import warnings
+from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from time import time
 
@@ -18,8 +18,6 @@ from tqdm.utils import (
     disp_trim,
     envwrap,
 )
-
-# TODO: what happens in non-color environments?
 
 
 
@@ -557,10 +555,3 @@ class ColoredBar(Bar):
             bar.extend(charset[0] * (N_BARS - filled - 1))
 
         return "".join(bar)
-
-
-
-N = 100
-for _ in (pbar := ErrorTqdm(range(N), total=N, colour="green")):
-    if _ == 1: pbar.warn()
-    if _ == 90: pbar.error()
