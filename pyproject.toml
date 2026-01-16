@@ -1,0 +1,61 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "tqdm-color"
+dynamic = ["version"]
+description = 'Enhance tqdm progress bars with colored segments'
+readme = "README.md"
+requires-python = ">=3.8"
+license = "MIT"
+keywords = []
+authors = [
+  { name = "Colin Moldenhauer", email = "colin.moldenhauer@posteo.de" },
+]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Programming Language :: Python",
+  "Programming Language :: Python :: 3.8",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: Implementation :: CPython",
+  "Programming Language :: Python :: Implementation :: PyPy",
+]
+dependencies = []
+
+[project.urls]
+Documentation = "https://github.com/Colin Moldenhauer/tqdm-color#readme"
+Issues = "https://github.com/Colin Moldenhauer/tqdm-color/issues"
+Source = "https://github.com/Colin Moldenhauer/tqdm-color"
+
+[tool.hatch.version]
+path = "src/tqdm_color/__about__.py"
+
+[tool.hatch.envs.types]
+extra-dependencies = [
+  "mypy>=1.0.0",
+]
+[tool.hatch.envs.types.scripts]
+check = "mypy --install-types --non-interactive {args:src/tqdm_color tests}"
+
+[tool.coverage.run]
+source_pkgs = ["tqdm_color", "tests"]
+branch = true
+parallel = true
+omit = [
+  "src/tqdm_color/__about__.py",
+]
+
+[tool.coverage.paths]
+tqdm_color = ["src/tqdm_color", "*/tqdm-color/src/tqdm_color"]
+tests = ["tests", "*/tqdm-color/tests"]
+
+[tool.coverage.report]
+exclude_lines = [
+  "no cov",
+  "if __name__ == .__main__.:",
+  "if TYPE_CHECKING:",
+]
