@@ -13,4 +13,3 @@ for i in (pbar := tqdm_error(range(100)):
     if i == 60:
         pbar.error()
 ```
-# TODO: screenshow
