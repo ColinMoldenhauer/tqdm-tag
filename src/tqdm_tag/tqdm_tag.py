@@ -12,13 +12,16 @@ from tqdm.utils import (
     disp_trim,
 )
 
+# TODO: what happens in non-color environments?
+# TODO: how to work together with `color` argument?
+# TODO: include error/warning in default text part of tqdm info (e.g. 90/100 [1/1])
 
 
 class tqdm_status(tqdm):
     def __init__(
         self,
         *args,
-        # standard arguments needed for tqdm_color
+        # standard arguments needed for tqdm_tag
         total=None,
         colour=None,
         # new params for color mapping
@@ -66,6 +69,7 @@ class tqdm_status(tqdm):
     def set_tag(self, tag, color="none", status=None):
         """
         Record the current item's status.
+        # TODO
         """
         i = self._current_item_idx
 
@@ -496,6 +500,7 @@ class ColoredBar(Bar):
         bar = []
 
         # --- render full blocks ---
+        # TODO: remove random colors
         segment_colours = self.segment_colours
         for i in range(filled):
             colour = self._resolve_colour(

@@ -1,9 +1,9 @@
-# tqdm_color
-Enhance tqdm progress bars with colored segments
+# tqdm-tag
+Enhance tqdm progress bars by assigning tags and colors to iterations.
 
 ## Usage
 ```python
-from tqdm_color import tqdm_status
+from tqdm_tag import tqdm_status
 
 N = 100
 for _ in (pbar := tqdm_status(
@@ -18,7 +18,7 @@ for _ in (pbar := tqdm_status(
 **Example 2:** change color upon completion
 ```python
 import time
-from tqdm_color import tqdm_status
+from tqdm_tag import tqdm_status
 
 N = 10
 for _ in (pbar := tqdm_status(
@@ -32,7 +32,7 @@ for _ in (pbar := tqdm_status(
 
 **Example 3:** pre-defined error class
 ```python
-from tqdm_color import tqdm_error
+from tqdm_tag import tqdm_error
 
 N = 100
 for _ in (pbar := tqdm_error(

@@ -1,5 +1,5 @@
 # ex1: general
-from tqdm_color import tqdm_status
+from tqdm_tag import tqdm_status
 
 N = 100
 for _ in (pbar := tqdm_status(
@@ -13,7 +13,7 @@ for _ in (pbar := tqdm_status(
 
 # ex2: update color once done
 import time
-from tqdm_color import tqdm_status
+from tqdm_tag import tqdm_status
 
 N = 9
 for _ in (pbar := tqdm_status(
@@ -25,7 +25,7 @@ for _ in (pbar := tqdm_status(
     if _ == N-1: pbar.set_tag("default", "green")
 
 # ex3: error
-from tqdm_color import tqdm_error
+from tqdm_tag import tqdm_error
 
 N = 100
 for _ in (pbar := tqdm_error(

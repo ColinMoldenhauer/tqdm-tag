@@ -3,10 +3,10 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "tqdm-color"
+name = "tqdm-tag"
 # dynamic = ["version"]
 version = "0.1.0"
-description = 'Enhance tqdm progress bars with colored segments'
+description = 'Enhance tqdm progress bars by assigning tags and colors to iterations.'
 readme = "README.md"
 requires-python = ">=3.8"
 license = "MIT"
@@ -28,29 +28,28 @@ classifiers = [
 dependencies = ["tqdm", "numpy"]
 
 [project.urls]
-Documentation = "https://github.com/Colin Moldenhauer/tqdm-color#readme"
-Issues = "https://github.com/Colin Moldenhauer/tqdm-color/issues"
-Source = "https://github.com/Colin Moldenhauer/tqdm-color"
-
+Documentation = "https://github.com/Colin Moldenhauer/tqdm-tag#readme"
+Issues = "https://github.com/Colin Moldenhauer/tqdm-tag/issues"
+Source = "https://github.com/Colin Moldenhauer/tqdm-tag"
 
 [tool.hatch.envs.types]
 extra-dependencies = [
   "mypy>=1.0.0",
 ]
 [tool.hatch.envs.types.scripts]
-check = "mypy --install-types --non-interactive {args:src/tqdm_color tests}"
+check = "mypy --install-types --non-interactive {args:src/tqdm_tag tests}"
 
 [tool.coverage.run]
-source_pkgs = ["tqdm_color", "tests"]
+source_pkgs = ["tqdm_tag", "tests"]
 branch = true
 parallel = true
 omit = [
-  "src/tqdm_color/__about__.py",
+  "src/tqdm_tag/__about__.py",
 ]
 
 [tool.coverage.paths]
-tqdm_color = ["src/tqdm_color", "*/tqdm-color/src/tqdm_color"]
-tests = ["tests", "*/tqdm-color/tests"]
+tqdm_tag = ["src/tqdm_tag", "*/tqdm-tag/src/tqdm_tag"]
+tests = ["tests", "*/tqdm-tag/tests"]
 
 [tool.coverage.report]
 exclude_lines = [
