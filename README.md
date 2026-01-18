@@ -30,3 +30,16 @@ for _ in (pbar := tqdm_status(
     if _ == N-1: pbar.set_tag("default", "green")
 ```
 
+**Example 3:** pre-defined error class
+```python
+from tqdm_color import tqdm_error
+
+N = 100
+for _ in (pbar := tqdm_error(
+    range(N),
+    total=N,
+)):
+    if _ == 1: pbar.warn()
+    if _ == 30: pbar.error(color="red")
+```
+
