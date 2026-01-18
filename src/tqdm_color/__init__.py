@@ -1,1 +1,1 @@
-from tqdm_color import *
+from .tqdm_color import *
