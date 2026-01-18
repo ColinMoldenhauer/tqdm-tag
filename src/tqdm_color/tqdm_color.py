@@ -22,14 +22,21 @@ from tqdm.utils import (
 
 
 class ErrorTqdm(tqdm):
-    DEFAULT_STATUS = 0
-    STATUS_MAP = {"default": DEFAULT_STATUS, "warn": 1, "error": 2}
-    STATUS_COLORS = {"default": None, "warn": "YELLOW", "error": "RED"}
-    STATUS_TO_TAG = {val: key for key, val in STATUS_MAP.items()}
 
-
-    def __init__(self, *args, total=None, **kwargs):
+    def __init__(
+        self,
+        *args,
+        # standard arguments needed for tqdm_color
+        total=None,
+        colour=None,
+        # new params for color mapping
+        default_status=0,
+        status_map=None,
+        status_colours=None,
+        **kwargs
+    ):
         # initialize the status for each iterable item
+        # needs to be set before super().__init__ because it calls overriden format_dict()
         if total is not None:
             # number of iterable items known -> preallocate
             self._item_status = np.zeros(total, dtype=np.uint8)
@@ -37,13 +44,27 @@ class ErrorTqdm(tqdm):
             # number unknown -> use python's dynamic sized list
             self._item_staus = []
 
-        super().__init__(*args, total=total, **kwargs)
+        # color mapping options
+        self.default_status = default_status
+        if status_map is None:
+            self.status_map = {"default": default_status}
+        else:
+            self.status_map = status_map
+
+        if status_colours is None:
+            self.status_colours = {"default": colour}
+        else:
+            self.status_colours = status_colours
+
+        self.status_to_tag = {val: key for key, val in self.status_map.items()}
+
+        super().__init__(*args, total=total, colour=colour, **kwargs)
 
 
     def __iter__(self):
         for i, item in enumerate(super().__iter__()):
             # record status for this iteration as default
-            self._set_status(i, self.DEFAULT_STATUS)
+            self._set_status(i, self.default_status)
             self._current_item_idx = i
 
             # yield the actual item
@@ -53,7 +74,7 @@ class ErrorTqdm(tqdm):
         if self.total:
             self._item_status[idx] = status
         else:
-            self._item_status.append(self.DEFAULT_STATUS)
+            self._item_status.append(self.default_status)
 
     def _record_status(self, key):
         """Record the current item's status. If key is an integer, it's a direct"""
@@ -61,7 +82,7 @@ class ErrorTqdm(tqdm):
         if isinstance(key, int):
             status = key
         else:
-            status = self.STATUS_MAP.get(key, self.DEFAULT_STATUS)
+            status = self.status_map.get(key, self.default_status)
 
         self._set_status(n, status)
 
@@ -116,9 +137,9 @@ class ErrorTqdm(tqdm):
             'colour': self.colour,
 
             'item_status': self._item_status,
-            'status_to_tag': self.STATUS_TO_TAG,
-            'default_status': self.DEFAULT_STATUS,
-            'tag_to_color': self.STATUS_COLORS,
+            'status_to_tag': self.status_to_tag,
+            'default_status': self.default_status,
+            'tag_to_color': self.status_colours,
             }
 
 
