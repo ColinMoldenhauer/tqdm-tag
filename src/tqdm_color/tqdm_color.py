@@ -14,7 +14,8 @@ from tqdm.utils import (
 
 
 
-class ErrorTqdm(tqdm):
+
+class tqdm_status(tqdm):
 
     def __init__(
         self,
@@ -24,8 +25,9 @@ class ErrorTqdm(tqdm):
         colour=None,
         # new params for color mapping
         default_status=0,
-        status_map=None,
-        status_colours=None,
+        tag_to_status=None,
+        tag_to_color=None,
+        reduce_op=max,
         **kwargs
     ):
         # initialize the status for each iterable item
@@ -39,17 +41,19 @@ class ErrorTqdm(tqdm):
 
         # color mapping options
         self.default_status = default_status
-        if status_map is None:
-            self.status_map = {"default": default_status}
+        if tag_to_status is None:
+            self.tag_to_status = {"default": default_status}
         else:
-            self.status_map = status_map
+            self.tag_to_status = tag_to_status
 
-        if status_colours is None:
-            self.status_colours = {"default": colour}
+        if tag_to_color is None:
+            self.tag_to_color = {"default": colour}
         else:
-            self.status_colours = status_colours
+            self.tag_to_color = tag_to_color
 
-        self.status_to_tag = {val: key for key, val in self.status_map.items()}
+        self.status_to_tag = {val: key for key, val in self.tag_to_status.items()}
+
+        self.reduce_op = reduce_op
 
         super().__init__(*args, total=total, colour=colour, **kwargs)
 
@@ -64,27 +68,42 @@ class ErrorTqdm(tqdm):
             yield item
 
 
+    # main API
+    def set_tag(self, tag, color="none", status=None):
+        """
+        Record the current item's status.
+
+
+        """
+        i = self._current_item_idx
+
+        # add new tag
+        if tag not in self.tag_to_status:
+            if status is None:
+                new_status = max(self.tag_to_status.values()) + 1
+            else:
+                new_status = status
+            self.tag_to_status[tag] = new_status
+            self.status_to_tag[new_status] = tag
+
+        # update color if passed
+        if color != "none":
+            self.tag_to_color[tag] = color
+
+        status = self.tag_to_status[tag]
+
+        self._set_status(i, status)
+
+    # helper function for coloring functionality
     def _set_status(self, idx, status):
         if self.total:
             self._item_status[idx] = status
         else:
             self._item_status.append(self.default_status)
 
-    def _record_status(self, key):
-        """Record the current item's status. If key is an integer, it's a direct"""
-        n = self._current_item_idx
-        if isinstance(key, int):
-            status = key
-        else:
-            status = self.status_map.get(key, self.default_status)
-
-        self._set_status(n, status)
-
-    def warn(self): self._record_status("warn")
-    def error(self): self._record_status("error")
 
     @staticmethod
-    def _get_colors(n_segments, item_status, status_to_tag, tag_to_color, default_status, op=max, **kwargs):
+    def _get_colors(n_segments, item_status, status_to_tag, tag_to_color, default_status, reduce_op=max, **kwargs):
 
         if n_segments > len(item_status): # more segements to draw than items -> multiple segments per item ()
             indices = np.linspace(0, len(item_status)-1e-5, n_segments)
@@ -94,10 +113,10 @@ class ErrorTqdm(tqdm):
             spl = np.array_split(item_status, n_segments)
 
         # assign
-        segment_status = [op(spl_) for spl_ in spl]
+        segment_status = [reduce_op(spl_) for spl_ in spl]
 
         segment_color_name = [status_to_tag[st_] for st_ in segment_status]
-        segment_color = [tag_to_color[tag_] for tag_ in segment_color_name]
+        segment_color = [tag_to_color.get(tag_, None) for tag_ in segment_color_name]
         return segment_color
 
 
@@ -299,7 +318,7 @@ class ErrorTqdm(tqdm):
 
             # Formatting progress bar space available for bar's display
             n_segments = max(1, ncols - disp_len(nobar)) if ncols else 10
-            segment_colours = ErrorTqdm._get_colors(n_segments, **format_dict)
+            segment_colours = tqdm_status._get_colors(n_segments, **format_dict)
             full_bar = ColoredBar(frac,
                            n_segments,
                            charset=ColoredBar.ASCII if ascii is True else ascii or ColoredBar.UTF,
@@ -320,7 +339,7 @@ class ErrorTqdm(tqdm):
             if not full_bar.format_called:
                 return nobar
             n_segments = max(1, ncols - disp_len(nobar)) if ncols else 10
-            segment_colours = ErrorTqdm._get_colors(n_segments, **format_dict)
+            segment_colours = tqdm_status._get_colors(n_segments, **format_dict)
             full_bar = ColoredBar(0,
                            max(1, ncols - disp_len(nobar)) if ncols else 10,
                            segment_colours=segment_colours,
