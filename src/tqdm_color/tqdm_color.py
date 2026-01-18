@@ -26,170 +26,18 @@ class ErrorTqdm(tqdm):
     STATUS_MAP = {"default": DEFAULT_STATUS, "warn": 1, "error": 2}
     STATUS_COLORS = {"default": None, "warn": "YELLOW", "error": "RED"}
     STATUS_TO_TAG = {val: key for key, val in STATUS_MAP.items()}
-    # _item_status = defaultdict(list)
 
-    # '''
-    # override defaults via env vars
-    @envwrap("TQDM_", is_method=True, types={'total': float, 'ncols': int, 'miniters': float,
-                                             'position': int, 'nrows': int})
-    def __init__(self, iterable=None, desc=None, total=None, leave=True, file=None,
-                 ncols=None, mininterval=0.1, maxinterval=10.0, miniters=None,
-                 ascii=None, disable=False, unit='it', unit_scale=False,
-                 dynamic_ncols=False, smoothing=0.3, bar_format=None, initial=0,
-                 position=None, postfix=None, unit_divisor=1000, write_bytes=False,
-                 lock_args=None, nrows=None, colour=None, delay=0.0, gui=False,
-                 **kwargs):
-        """see tqdm.tqdm for arguments"""
-        if file is None:
-            file = sys.stderr
 
-        if write_bytes:
-            # Despite coercing unicode into bytes, py2 sys.std* streams
-            # should have bytes written to them.
-            file = SimpleTextIOWrapper(
-                file, encoding=getattr(file, 'encoding', None) or 'utf-8')
-
-        file = DisableOnWriteError(file, tqdm_instance=self)
-
-        if disable is None and hasattr(file, "isatty") and not file.isatty():
-            disable = True
-
-        if total is None and iterable is not None:
-            try:
-                total = len(iterable)
-            except (TypeError, AttributeError):
-                total = None
-        if total == float("inf"):
-            # Infinite iterations, behave same as unknown
-            total = None
-
+    def __init__(self, *args, total=None, **kwargs):
+        # initialize the status for each iterable item
         if total is not None:
+            # number of iterable items known -> preallocate
             self._item_status = np.zeros(total, dtype=np.uint8)
         else:
+            # number unknown -> use python's dynamic sized list
             self._item_staus = []
 
-        if disable:
-            self.iterable = iterable
-            self.disable = disable
-            with self._lock:
-                self.pos = self._get_free_pos(self)
-                self._instances.remove(self)
-            self.n = initial
-            self.total = total
-            self.leave = leave
-            return
-
-        if kwargs:
-            self.disable = True
-            with self._lock:
-                self.pos = self._get_free_pos(self)
-                self._instances.remove(self)
-            raise (
-                TqdmDeprecationWarning(
-                    "`nested` is deprecated and automated.\n"
-                    "Use `position` instead for manual control.\n",
-                    fp_write=getattr(file, 'write', sys.stderr.write))
-                if "nested" in kwargs else
-                TqdmKeyError("Unknown argument(s): " + str(kwargs)))
-
-        # Preprocess the arguments
-        if (
-            (ncols is None or nrows is None) and (file in (sys.stderr, sys.stdout))
-        ) or dynamic_ncols:  # pragma: no cover
-            if dynamic_ncols:
-                dynamic_ncols = _screen_shape_wrapper()
-                if dynamic_ncols:
-                    ncols, nrows = dynamic_ncols(file)
-            else:
-                _dynamic_ncols = _screen_shape_wrapper()
-                if _dynamic_ncols:
-                    _ncols, _nrows = _dynamic_ncols(file)
-                    if ncols is None:
-                        ncols = _ncols
-                    if nrows is None:
-                        nrows = _nrows
-
-        if miniters is None:
-            miniters = 0
-            dynamic_miniters = True
-        else:
-            dynamic_miniters = False
-
-        if mininterval is None:
-            mininterval = 0
-
-        if maxinterval is None:
-            maxinterval = 0
-
-        if ascii is None:
-            ascii = not _supports_unicode(file)
-
-        if bar_format and ascii is not True and not _is_ascii(ascii):
-            # Convert bar format into unicode since terminal uses unicode
-            bar_format = str(bar_format)
-
-        if smoothing is None:
-            smoothing = 0
-
-        # Store the arguments
-        self.iterable = iterable
-        self.desc = desc or ''
-        self.total = total
-        self.leave = leave
-        self.fp = file
-        self.ncols = ncols
-        self.nrows = nrows
-        self.mininterval = mininterval
-        self.maxinterval = maxinterval
-        self.miniters = miniters
-        self.dynamic_miniters = dynamic_miniters
-        self.ascii = ascii
-        self.disable = disable
-        self.unit = unit
-        self.unit_scale = unit_scale
-        self.unit_divisor = unit_divisor
-        self.initial = initial
-        self.lock_args = lock_args
-        self.delay = delay
-        self.gui = gui
-        self.dynamic_ncols = dynamic_ncols
-        self.smoothing = smoothing
-        self._ema_dn = EMA(smoothing)
-        self._ema_dt = EMA(smoothing)
-        self._ema_miniters = EMA(smoothing)
-        self.bar_format = bar_format
-        self.postfix = None
-        self.colour = colour
-        self._time = time
-        if postfix:
-            try:
-                self.set_postfix(refresh=False, **postfix)
-            except TypeError:
-                self.postfix = postfix
-
-        # Init the iterations counters
-        self.last_print_n = initial
-        self.n = initial
-
-        # if nested, at initial sp() call we replace '\r' by '\n' to
-        # not overwrite the outer progress bar
-        with self._lock:
-            # mark fixed positions as negative
-            self.pos = self._get_free_pos(self) if position is None else -position
-
-        if not gui:
-            # Initialize the screen printer
-            self.sp = self.status_printer(self.fp)
-            if delay <= 0:
-                self.refresh(lock_args=self.lock_args)
-
-        # Init the time counter
-        self.last_print_t = self._time()
-        # NB: Avoid race conditions by setting start_t at the very end of init
-        self.start_t = self.last_print_t
-    # '''
-
-
+        super().__init__(*args, total=total, **kwargs)
 
 
     def __iter__(self):
@@ -200,7 +48,6 @@ class ErrorTqdm(tqdm):
 
             # yield the actual item
             yield item
-
 
     def _set_status(self, idx, status):
         if self.total:
