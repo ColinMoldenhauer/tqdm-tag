@@ -323,10 +323,9 @@ class tqdm_status(tqdm):
             n_segments = max(1, ncols - disp_len(nobar)) if ncols else 10
             segment_colours = tqdm_status._get_colors(n_segments, **format_dict)
             full_bar = ColoredBar(frac,
-                           n_segments,
-                           charset=ColoredBar.ASCII if ascii is True else ascii or ColoredBar.UTF,
-                           colour=colour,
-                           segment_colours=segment_colours,
+                n_segments,
+                charset=ColoredBar.ASCII if ascii is True else ascii or ColoredBar.UTF,
+                segment_colours=segment_colours,
             )
             if not _is_ascii(full_bar.charset) and _is_ascii(bar_format):
                 bar_format = str(bar_format)
@@ -346,7 +345,7 @@ class tqdm_status(tqdm):
             full_bar = ColoredBar(0,
                            max(1, ncols - disp_len(nobar)) if ncols else 10,
                            segment_colours=segment_colours,
-                           charset=ColoredBar.BLANK, colour=colour)
+                           charset=ColoredBar.BLANK)
             res = bar_format.format(bar=full_bar, **format_dict)
             return disp_trim(res, ncols) if ncols else res
         else:
@@ -366,7 +365,7 @@ class ColoredBar(Bar):
                'CYAN': '\x1b[36m', 'WHITE': '\x1b[37m'}
 
 
-    def __init__(self, frac, default_len=10, charset=UTF, segment_colours=None, **kwargs):
+    def __init__(self, frac, default_len=10, charset=UTF, segment_colours=None):
         if not 0 <= frac <= 1:
             warnings.warn("clamping frac to range [0, 1]", TqdmWarning, stacklevel=2)
             frac = max(0, min(1, frac))
@@ -415,15 +414,14 @@ class ColoredBar(Bar):
         # --- render full blocks ---
         segment_colours = self.segment_colours or np.random.choice(list(self.COLOURS.values()), filled)
         for i in range(filled):
-            colour = self._resolve_colour(
-                segment_colours[i] if i < len(segment_colours) else None
-            )
+            colour = self._resolve_colour(segment_colours[i]) # segment_colours[i] if i < len(segment_colours) else None
             sym = charset[-1]
             bar.append(f"{colour}{sym}{self.COLOUR_RESET}" if colour else sym)
 
         # --- fractional block ---
         if filled < N_BARS:
             sym = charset[remainder]
+            colour = self._resolve_colour(segment_colours[filled])
             bar.append(f"{colour}{sym}{self.COLOUR_RESET}" if colour else sym)
             bar.extend(charset[0] * (N_BARS - filled - 1))
 

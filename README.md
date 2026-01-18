@@ -3,13 +3,30 @@ Enhance tqdm progress bars with colored segments
 
 ## Usage
 ```python
-from tqdm_color import tqdm_error
+from tqdm_color import tqdm_status
 
-
-for i in (pbar := tqdm_error(range(100)):
-    if i == 0:
-        pbar.warn()
-
-    if i == 60:
-        pbar.error()
+N = 100
+for _ in (pbar := tqdm_status(
+    range(N),
+    total=N,
+)):
+    if _ == 1: pbar.set_tag("warn", "yellow")   # add new tag
+    if _ == 30: pbar.set_tag("warn")            # reuse tag
+    if _ == 90: pbar.set_tag("error", "red")    # add another tag
 ```
+
+**Example 2:** change color upon completion
+```python
+import time
+from tqdm_color import tqdm_status
+
+N = 10
+for _ in (pbar := tqdm_status(
+    range(N),
+    total=N,
+    colour="red",
+)):
+    time.sleep(.2)
+    if _ == N-1: pbar.set_tag("default", "green")
+```
+
