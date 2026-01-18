@@ -41,15 +41,13 @@ class tqdm_status(tqdm):
 
         # color mapping options
         self.default_status = default_status
-        if tag_to_status is None:
-            self.tag_to_status = {"default": default_status}
-        else:
-            self.tag_to_status = tag_to_status
+        self.tag_to_status = {"default": default_status}
+        if tag_to_status is not None:
+            self.tag_to_status.update(tag_to_status)
 
-        if tag_to_color is None:
-            self.tag_to_color = {"default": colour}
-        else:
-            self.tag_to_color = tag_to_color
+        self.tag_to_color = {"default": colour}
+        if tag_to_color is not None:
+            self.tag_to_color.update(tag_to_color)
 
         self.status_to_tag = {val: key for key, val in self.tag_to_status.items()}
 
@@ -352,6 +350,14 @@ class tqdm_status(tqdm):
             # no total: no progressbar, ETA, just progress stats
             return (f'{(prefix + ": ") if prefix else ""}'
                     f'{n_fmt}{unit} [{elapsed_str}, {rate_fmt}{postfix}]')
+
+
+class tqdm_error(tqdm_status):
+    def __init__(self, *args, total=None, colour=None, default_status=0, status_map={"warn": 1, "error": 2}, status_colours={"warn": "yellow", "error": "red"}, reduce_op=max, **kwargs):
+        super().__init__(*args, total=total, colour=colour, default_status=default_status, tag_to_status=status_map, tag_to_color=status_colours, reduce_op=reduce_op, **kwargs)
+
+    def warn(self): self.set_tag("warn")
+    def error(self): self.set_tag("error")
 
 
 class ColoredBar(Bar):
