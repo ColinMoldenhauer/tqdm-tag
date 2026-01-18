@@ -141,14 +141,17 @@ class tqdm_status(tqdm):
             'item_status': self._item_status,
             'status_to_tag': self.status_to_tag,
             'default_status': self.default_status,
-            'tag_to_color': self.status_colours,
+            'tag_to_color': self.tag_to_color,
+            'reduce_op': self.reduce_op,
             }
 
 
     @staticmethod
     def format_meter(n, total, elapsed, ncols=None, prefix='', ascii=False, unit='it',
                      unit_scale=False, rate=None, bar_format=None, postfix=None,
-                     unit_divisor=1000, initial=0, colour=None, **extra_kwargs):
+                     unit_divisor=1000, initial=0, colour=None,
+                     reduce_op=max,
+                     **extra_kwargs):
         """
         Return a string-based progress bar given some parameters
 
