@@ -424,7 +424,7 @@ class ColoredBar(Bar):
         # --- fractional block ---
         if filled < N_BARS:
             sym = charset[remainder]
-            bar.append(sym)
+            bar.append(f"{colour}{sym}{self.COLOUR_RESET}" if colour else sym)
             bar.extend(charset[0] * (N_BARS - filled - 1))
 
         return "".join(bar)
