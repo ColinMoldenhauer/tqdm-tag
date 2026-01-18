@@ -1,22 +1,15 @@
-import sys
 import warnings
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
-from time import time
 
 import numpy as np
-from tqdm import TqdmDeprecationWarning, TqdmKeyError, TqdmWarning, tqdm
-from tqdm.std import EMA, Bar
+from tqdm import TqdmWarning, tqdm
+from tqdm.std import Bar
 from tqdm.utils import (
-    DisableOnWriteError,
     FormatReplace,
-    SimpleTextIOWrapper,
     _is_ascii,
-    _screen_shape_wrapper,
-    _supports_unicode,
     disp_len,
     disp_trim,
-    envwrap,
 )
 
 
@@ -70,6 +63,7 @@ class ErrorTqdm(tqdm):
             # yield the actual item
             yield item
 
+
     def _set_status(self, idx, status):
         if self.total:
             self._item_status[idx] = status
@@ -92,26 +86,15 @@ class ErrorTqdm(tqdm):
     @staticmethod
     def _get_colors(n_segments, item_status, status_to_tag, tag_to_color, default_status, op=max, **kwargs):
 
-        # more segements to draw than items -> multiple segments per item ()
-        if n_segments > len(item_status):
+        if n_segments > len(item_status): # more segements to draw than items -> multiple segments per item ()
             indices = np.linspace(0, len(item_status)-1e-5, n_segments)
             indices = np.floor(indices).astype(int)
             spl = [np.array([item_status[i]]) for i in indices]
-        else:
+        else: # more elements than segments -> each segment may contain different stati
             spl = np.array_split(item_status, n_segments)
 
-            for spl_ in spl:
-                if not spl_.size:
-                    print("item_status", item_status, len(item_status))
-                    print("n_segments", n_segments)
-                    print("spl", spl)
-                    raise RuntimeError("Empty slice, how?")
-
-
         # assign
-        segment_status = [op(
-            spl_ if spl_.size else [default_status]
-            ) for spl_ in spl]
+        segment_status = [op(spl_) for spl_ in spl]
 
         segment_color_name = [status_to_tag[st_] for st_ in segment_status]
         segment_color = [tag_to_color[tag_] for tag_ in segment_color_name]
