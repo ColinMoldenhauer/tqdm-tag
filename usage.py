@@ -1,37 +1,65 @@
 # ex1: general
-from tqdm_tag import tqdm_status
+from tqdm_tag import TqdmTag
 
-N = 100
-for _ in (pbar := tqdm_status(
-    range(N),
-    total=N,
-)):
-    if _ == 1: pbar.set_tag("warn", "yellow")
-    if _ == 30: pbar.set_tag("warn")
-    if _ == 90: pbar.set_tag("error", "red")
+pbar = TqdmTag(
+    range(100),   # your iterable
+    tag_to_status={"warn": 1, "error": 2},
+    tag_to_color={"warn": "yellow", "error": "red"},
+)
+for i in pbar:
+    if i == 1: pbar.tag("warn")
+    if i == 90: pbar.tag("error")
 
 
-# ex2: update color once done
+# ex2: general
+from tqdm_tag import TqdmTag
+
+pbar = TqdmTag(range(100))     # initialize without pre-defined tags
+for i in pbar:
+    if i == 1: pbar.tag("warn", "yellow")   # add new tag (and color)
+    if i == 30: pbar.tag("warn")            # reuse tag
+    if i == 90: pbar.tag("error", "red", status=3)    # another tag (with custom status)
+
+
+# ex3: update color once done
 import time
-from tqdm_tag import tqdm_status
+from tqdm_tag import TqdmTag
 
-N = 9
-for _ in (pbar := tqdm_status(
-    range(N),
-    total=N,
+it = range(100)
+pbar = TqdmTag(
+    it,
     colour="red",
-)):
-    time.sleep(.2)
-    if _ == N-1: pbar.set_tag("default", "green")
+)
+for i in pbar:
+    time.sleep(.01)
+    if i == len(it)-1: pbar.tag("default", "green")
 
-# ex3: error
-from tqdm_tag import tqdm_error
+# ex4: error
+from tqdm_tag import TqdmErrorTag
 
-N = 100
-for _ in (pbar := tqdm_error(
-    range(N),
-    total=N,
-)):
-    if _ == 1: pbar.warn()
-    if _ == 30: pbar.error(color="red")
+pbar = TqdmErrorTag(range(100))
+for i in pbar:
+    if i == 1: pbar.warn()
+    if i == 30: pbar.error(color="red")
+
+
+# adv1: reduce operation
+from tqdm_tag import TqdmTag
+
+pbar = TqdmTag(
+    range(100),
+    reduce_op=max,  # use highest status value
+)
+for i in pbar:
+    if i == 1: pbar.tag("tag1", status=1, color="green")
+    if i == 2: pbar.tag("tag2", status=2, color="red")
+
+pbar = TqdmTag(
+    range(100),
+    reduce_op=min,  # use lowest status value
+    reduce_ignore_default=True,
+)
+for i in pbar:
+    if i == 1: pbar.tag("tag1", status=1, color="green")
+    if i == 2: pbar.tag("tag2", status=2, color="red")
 

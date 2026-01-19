@@ -17,10 +17,10 @@ from tqdm.utils import (
 # TODO: include error/warning in default text part of tqdm info (e.g. 90/100 [1/1])
 
 
-class tqdm_status(tqdm):
+class TqdmTag(tqdm):
     def __init__(
         self,
-        *args,
+        iterable=None,
         # standard arguments needed for tqdm_tag
         total=None,
         colour=None,
@@ -29,8 +29,19 @@ class tqdm_status(tqdm):
         tag_to_status=None,
         tag_to_color=None,
         reduce_op=max,
+        reduce_ignore_default=False,
         **kwargs,
     ):
+        # replicate tqdm's total parsing
+        if total is None and iterable is not None:
+            try:
+                total = len(iterable)
+            except (TypeError, AttributeError):
+                total = None
+        if total == float("inf"):
+            # Infinite iterations, behave same as unknown
+            total = None
+
         # initialize the status for each iterable item
         # needs to be set before super().__init__ because it calls overriden format_dict()
         if total is not None:
@@ -38,7 +49,7 @@ class tqdm_status(tqdm):
             self._item_status = np.zeros(total, dtype=np.uint8)
         else:
             # number unknown -> use python's dynamic sized list
-            self._item_staus = []
+            self._item_status = []
 
         # color mapping options
         self.default_status = default_status
@@ -53,8 +64,9 @@ class tqdm_status(tqdm):
         self.status_to_tag = {val: key for key, val in self.tag_to_status.items()}
 
         self.reduce_op = reduce_op
+        self.reduce_ignore_default = reduce_ignore_default
 
-        super().__init__(*args, total=total, colour=colour, **kwargs)
+        super().__init__(iterable=iterable, total=total, colour=colour, **kwargs)
 
     def __iter__(self):
         for i, item in enumerate(super().__iter__()):
@@ -66,7 +78,7 @@ class tqdm_status(tqdm):
             yield item
 
     # main API
-    def set_tag(self, tag, color="none", status=None):
+    def tag(self, tag, color="none", status=None):
         """
         Record the current item's status.
         # TODO
@@ -105,6 +117,7 @@ class tqdm_status(tqdm):
         tag_to_color,
         default_status,
         reduce_op=max,
+        reduce_ignore_default=False,
         **kwargs,
     ):
         if n_segments > len(item_status):  # more segements to draw than items -> multiple segments per item ()
@@ -115,7 +128,16 @@ class tqdm_status(tqdm):
             spl = np.array_split(item_status, n_segments)
 
         # assign
-        segment_status = [reduce_op(spl_) for spl_ in spl]
+        def reducer(sp):
+            if reduce_ignore_default:
+                # filter default status from current split
+                sp = [s_ for s_ in sp if s_ != default_status]
+                # avoid empty splits due to filtering
+                if not sp: sp = [default_status]
+
+            return reduce_op(sp)
+
+        segment_status = [reducer(spl_) for spl_ in spl]
 
         segment_color_name = [status_to_tag[st_] for st_ in segment_status]
         segment_color = [tag_to_color.get(tag_, None) for tag_ in segment_color_name]
@@ -152,6 +174,7 @@ class tqdm_status(tqdm):
             "default_status": self.default_status,
             "tag_to_color": self.tag_to_color,
             "reduce_op": self.reduce_op,
+            "reduce_ignore_default": self.reduce_ignore_default,
         }
 
     @staticmethod
@@ -170,7 +193,6 @@ class tqdm_status(tqdm):
         unit_divisor=1000,
         initial=0,
         colour=None,
-        reduce_op=max,
         **extra_kwargs,
     ):
         """
@@ -369,7 +391,7 @@ class tqdm_status(tqdm):
 
             # Formatting progress bar space available for bar's display
             n_segments = max(1, ncols - disp_len(nobar)) if ncols else 10
-            segment_colours = tqdm_status._get_colors(n_segments, **format_dict)
+            segment_colours = TqdmTag._get_colors(n_segments, **format_dict)
             full_bar = ColoredBar(
                 frac,
                 n_segments,
@@ -390,7 +412,7 @@ class tqdm_status(tqdm):
             if not full_bar.format_called:
                 return nobar
             n_segments = max(1, ncols - disp_len(nobar)) if ncols else 10
-            segment_colours = tqdm_status._get_colors(n_segments, **format_dict)
+            segment_colours = TqdmTag._get_colors(n_segments, **format_dict)
             full_bar = ColoredBar(
                 0,
                 max(1, ncols - disp_len(nobar)) if ncols else 10,
@@ -407,7 +429,7 @@ class tqdm_status(tqdm):
             )
 
 
-class tqdm_error(tqdm_status):
+class TqdmErrorTag(TqdmTag):
     def __init__(
         self,
         *args,
@@ -431,10 +453,10 @@ class tqdm_error(tqdm_status):
         )
 
     def warn(self, **kwargs):
-        self.set_tag("warn", **kwargs)
+        self.tag("warn", **kwargs)
 
     def error(self, **kwargs):
-        self.set_tag("error", **kwargs)
+        self.tag("error", **kwargs)
 
 
 class ColoredBar(Bar):
