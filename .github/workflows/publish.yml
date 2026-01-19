@@ -29,4 +29,6 @@ jobs:
         run: hatch build
 
       - name: Publish to PyPI
-        run: hatch publish --no-prompt
+        run: |
+            hatch config set index.url https://upload.pypi.org/legacy/
+            hatch publish --no-prompt
