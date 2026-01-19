@@ -1,0 +1,32 @@
+name: Publish to PyPI
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+  id-token: write   # REQUIRED for trusted publishing
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Hatch
+        run: pip install --upgrade hatch
+
+      - name: Build package
+        run: hatch build
+
+      - name: Publish to PyPI
+        run: hatch publish
