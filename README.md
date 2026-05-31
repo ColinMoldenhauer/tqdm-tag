@@ -7,7 +7,7 @@
 [![Docs](https://readthedocs.org/projects/tqdm-tag/badge/?version=latest)](https://tqdm-tag.readthedocs.io)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-**tqdm-tag** extends [tqdm](https://tqdm.github.io/) so you can call `pbar.tag("warn")` or `pbar.tag("error")` on any item inside your loop. The corresponding segment of the progress bar fills with that tag's color, giving you an at-a-glance overview of where issues occurred — without waiting for the loop to finish.
+**tqdm-tag** extends [tqdm](https://tqdm.github.io/) so you can call `pbar.warn()` or `pbar.error()` on any item inside your loop. The corresponding segment of the progress bar fills with that tag's color, giving you an at-a-glance overview of where issues occurred — without waiting for the loop to finish.
 
 ---
 
@@ -25,27 +25,28 @@ pip install tqdm-tag
 
 ## Usage
 
-`TqdmTag` is a drop-in replacement for `tqdm`. The only addition is the `.tag(name)` call:
+`TqdmErrorTag` is a drop-in replacement for `tqdm` — swap the class name and you're done. Call `.warn()` or `.error()` on any item to color that segment of the bar:
 
 ```python
-from tqdm_tag import TqdmTag
+from tqdm_tag import TqdmErrorTag
 
-pbar = TqdmTag(
-    range(100),
-    tag_to_status={"warn": 1, "error": 2},
-    tag_to_color={"warn": "yellow", "error": "red"},
-)
+pbar = TqdmErrorTag(range(100), legend=True, desc="Processing")
 for item in pbar:
     result = process(item)
-    if result.has_warning:
-        pbar.tag("warn")
-    if result.has_error:
-        pbar.tag("error")
+    if result.has_warning: pbar.warn()
+    if result.has_error:   pbar.error()
 ```
 
-### Define tags upfront
+The bar segments fill with yellow/red as the loop runs. With `legend=True`, a live second line below shows running counts:
 
-Pass `tag_to_status` and `tag_to_color` at construction time (integer statuses decide which color wins when a bar segment contains multiple items):
+```
+Processing:  73%|████████████████████    | 73/100 [00:03<00:01, 12.5it/s]
+■ warn: 4   ■ error: 1
+```
+
+### Custom tags with TqdmTag
+
+For full control over tag names, colors, and status values use `TqdmTag` directly. Pass `tag_to_status` and `tag_to_color` at construction time:
 
 ```python
 from tqdm_tag import TqdmTag
@@ -54,6 +55,7 @@ pbar = TqdmTag(
     range(100),
     tag_to_status={"warn": 1, "error": 2},
     tag_to_color={"warn": "yellow", "error": "red"},
+    legend=True,
 )
 for i in pbar:
     if i == 10: pbar.tag("warn")
@@ -70,7 +72,7 @@ from tqdm_tag import TqdmTag
 pbar = TqdmTag(range(100))
 for i in pbar:
     if i == 10: pbar.tag("warn",  color="yellow")
-    if i == 30: pbar.tag("warn")           # reuse tag (no color needed)
+    if i == 30: pbar.tag("warn")           # reuse tag (color already known)
     if i == 80: pbar.tag("error", color="red")
 ```
 
@@ -88,17 +90,15 @@ for i in pbar:
         pbar.tag("default", color="green")
 ```
 
-### Pre-configured error class
+### Customize the legend
 
-`TqdmErrorTag` ships with `warn` (yellow) and `error` (red) already wired up:
+Tags in the legend are ordered by status value. Pass a `legend_format` callable to take full control — it receives `tag_counts` (dict of name → count) and `tag_to_color` (dict of name → color):
 
 ```python
-from tqdm_tag import TqdmErrorTag
+def my_legend(counts, colors):
+    return "  ".join(f"[{k.upper()}={v}]" for k, v in counts.items())
 
-pbar = TqdmErrorTag(range(100))
-for i in pbar:
-    if i % 20 == 0: pbar.warn()
-    if i == 95:     pbar.error()
+pbar = TqdmErrorTag(range(100), legend=True, legend_format=my_legend)
 ```
 
 ### Reduce operation for dense bars
@@ -122,8 +122,8 @@ for i in pbar:
 
 | Class | Description |
 |---|---|
-| `TqdmTag` | Core class — drop-in `tqdm` replacement with `.tag()` support |
-| `TqdmErrorTag` | Subclass pre-wired with `warn` / `error` tags and `.warn()` / `.error()` helpers |
+| `TqdmErrorTag` | Drop-in replacement with pre-wired `warn` / `error` tags and `.warn()` / `.error()` helpers |
+| `TqdmTag` | Core class for fully custom tag names, colors, and status values |
 | `ColoredBar` | Internal `Bar` subclass that renders ANSI-colored segments |
 
 Full API reference: **[tqdm-tag.readthedocs.io](https://tqdm-tag.readthedocs.io)**

@@ -31,6 +31,7 @@ class TqdmTag(tqdm):
         reduce_op=max,
         reduce_ignore_default=False,
         legend=False,
+        legend_format=None,
         **kwargs,
     ):
         # replicate tqdm's total parsing
@@ -67,6 +68,7 @@ class TqdmTag(tqdm):
         self.reduce_op = reduce_op
         self.reduce_ignore_default = reduce_ignore_default
         self._legend = legend
+        self._legend_format = legend_format
         self._tag_counts = {}
         self._legend_active = False  # tracks whether a legend line has been written
 
@@ -441,10 +443,17 @@ class TqdmTag(tqdm):
             )
 
     def _format_legend(self):
+        if self._legend_format is not None:
+            return self._legend_format(self._tag_counts, self.tag_to_color)
+
         parts = []
         _tmp = ColoredBar(0, 1)
-        swatch_char = "#" if self.ascii else "■"  # ■ or ASCII fallback
-        for tag_name, count in self._tag_counts.items():
+        swatch_char = "#" if self.ascii else "■"
+        sorted_tags = sorted(
+            self._tag_counts.items(),
+            key=lambda kv: self.tag_to_status.get(kv[0], 0),
+        )
+        for tag_name, count in sorted_tags:
             color = self.tag_to_color.get(tag_name)
             swatch = swatch_char
             ansi = _tmp._resolve_colour(color)
