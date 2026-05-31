@@ -37,7 +37,7 @@ for item in pbar:
     if result.has_error:   pbar.error()
 ```
 
-The bar segments fill with yellow/red as the loop runs. With `legend=True`, a live second line below shows running counts:
+With `legend=True`, a live second line below the bar shows running counts:
 
 ```
 Processing:  73%|████████████████████    | 73/100 [00:03<00:01, 12.5it/s]
@@ -46,34 +46,33 @@ Processing:  73%|████████████████████   
 
 ### Custom tags with TqdmTag
 
-For full control over tag names, colors, and status values use `TqdmTag` directly. Pass `tag_to_status` and `tag_to_color` at construction time:
+For full control, use `TqdmTag` with `Tag` objects. Each `Tag` groups name, color, and an optional status integer (auto-assigned if omitted):
 
 ```python
-from tqdm_tag import TqdmTag
+from tqdm_tag import Tag, TqdmTag
 
 pbar = TqdmTag(
     range(100),
-    tag_to_status={"warn": 1, "error": 2},
-    tag_to_color={"warn": "yellow", "error": "red"},
+    tags=[Tag("warn", color="yellow"), Tag("error", color="red")],
     legend=True,
 )
 for i in pbar:
-    if i == 10: pbar.tag("warn")
+    if i == 10: pbar.tag("warn")    # reference by name string
     if i == 80: pbar.tag("error")
 ```
 
 ### Add tags on the fly
 
-Omit `tag_to_status`/`tag_to_color` and pass a color directly to `.tag()` — new tags are registered automatically:
+Pass a `Tag` object directly to `.tag()` to register and apply it in one call. Subsequent calls can use the name string:
 
 ```python
-from tqdm_tag import TqdmTag
+from tqdm_tag import Tag, TqdmTag
 
 pbar = TqdmTag(range(100))
 for i in pbar:
-    if i == 10: pbar.tag("warn",  color="yellow")
-    if i == 30: pbar.tag("warn")           # reuse tag (color already known)
-    if i == 80: pbar.tag("error", color="red")
+    if i == 10: pbar.tag(Tag("warn",  color="yellow"))  # registers + applies
+    if i == 30: pbar.tag("warn")                        # reuse by name
+    if i == 80: pbar.tag(Tag("error", color="red"))
 ```
 
 ### Turn the whole bar green on success
@@ -103,19 +102,20 @@ pbar = TqdmErrorTag(range(100), legend=True, legend_format=my_legend)
 
 ### Reduce operation for dense bars
 
-When the terminal is narrow, multiple items share one bar segment. Use `reduce_op` to control which status wins, and `reduce_ignore_default` to skip untagged items when reducing:
+When the terminal is narrow, multiple items share one bar segment. Use `reduce_op` to control which status wins, and `reduce_ignore_default` to skip untagged items:
 
 ```python
-from tqdm_tag import TqdmTag
+from tqdm_tag import Tag, TqdmTag
 
 pbar = TqdmTag(
     range(100),
+    tags=[Tag("warn", color="yellow", status=1), Tag("error", color="red", status=2)],
     reduce_op=max,              # highest-severity status wins
     reduce_ignore_default=True, # don't let untagged items dilute the color
 )
 for i in pbar:
-    if i % 10 == 1: pbar.tag("warn",  color="yellow", status=1)
-    if i % 10 == 2: pbar.tag("error", color="red",    status=2)
+    if i % 10 == 1: pbar.tag("warn")
+    if i % 10 == 2: pbar.tag("error")
 ```
 
 ## API
@@ -123,7 +123,8 @@ for i in pbar:
 | Class | Description |
 |---|---|
 | `TqdmErrorTag` | Drop-in replacement with pre-wired `warn` / `error` tags and `.warn()` / `.error()` helpers |
-| `TqdmTag` | Core class for fully custom tag names, colors, and status values |
+| `TqdmTag` | Core class for fully custom tags |
+| `Tag` | Dataclass grouping a tag's `name`, `color`, and `status` |
 | `ColoredBar` | Internal `Bar` subclass that renders ANSI-colored segments |
 
 Full API reference: **[tqdm-tag.readthedocs.io](https://tqdm-tag.readthedocs.io)**

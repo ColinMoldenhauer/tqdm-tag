@@ -1,18 +1,17 @@
 import time
-from tqdm_tag import TqdmTag, TqdmErrorTag
+from tqdm_tag import Tag, TqdmTag, TqdmErrorTag
 
 N = 50
 DELAY = 0.04
 
 
 # ---------------------------------------------------------------------------
-# Ex 1: Tags defined upfront; bar segments turn yellow/red at specific items
+# Ex 1: Tags defined upfront via Tag objects
 # ---------------------------------------------------------------------------
 print("\nEx 1: Tags defined upfront (warn=yellow at item 10, error=red at item 40)")
 pbar = TqdmTag(
     range(N),
-    tag_to_status={"warn": 1, "error": 2},
-    tag_to_color={"warn": "yellow", "error": "red"},
+    tags=[Tag("warn", color="yellow"), Tag("error", color="red")],
     desc="Processing",
 )
 for i in pbar:
@@ -22,15 +21,15 @@ for i in pbar:
 
 
 # ---------------------------------------------------------------------------
-# Ex 2: Tags added dynamically during iteration (no upfront declaration)
+# Ex 2: Tags added dynamically — by string or by Tag object
 # ---------------------------------------------------------------------------
-print("\nEx 2: Tags added on the fly (warn=yellow at 10 & 30, error=red at 40)")
+print("\nEx 2: Tags added on the fly (string or Tag object)")
 pbar = TqdmTag(range(N), desc="Processing")
 for i in pbar:
     time.sleep(DELAY)
-    if i == 10: pbar.tag("warn",  color="yellow")
-    if i == 30: pbar.tag("warn")             # reuse tag (color already known)
-    if i == 40: pbar.tag("error", color="red")
+    if i == 10: pbar.tag(Tag("warn",  color="yellow"))   # Tag object registers + applies
+    if i == 30: pbar.tag("warn")                         # string reuses existing tag
+    if i == 40: pbar.tag(Tag("error", color="red"))
 
 
 # ---------------------------------------------------------------------------
@@ -61,14 +60,15 @@ for i in pbar:
 print("\nEx 5: reduce_op=max — highest severity wins when items share a segment")
 pbar = TqdmTag(
     range(N),
+    tags=[Tag("warn", color="yellow", status=1), Tag("error", color="red", status=2)],
     reduce_op=max,
     reduce_ignore_default=True,
     desc="Processing",
 )
 for i in pbar:
     time.sleep(DELAY)
-    if i % 10 == 1: pbar.tag("warn",  color="yellow", status=1)
-    if i % 10 == 2: pbar.tag("error", color="red",    status=2)
+    if i % 10 == 1: pbar.tag("warn")
+    if i % 10 == 2: pbar.tag("error")
 
 
 # ---------------------------------------------------------------------------
@@ -77,8 +77,7 @@ for i in pbar:
 print("\nEx 6: legend=True — second line below bar shows colored tag counts")
 pbar = TqdmTag(
     range(N),
-    tag_to_status={"warn": 1, "error": 2},
-    tag_to_color={"warn": "yellow", "error": "red"},
+    tags=[Tag("warn", color="yellow"), Tag("error", color="red")],
     legend=True,
     desc="Processing",
 )

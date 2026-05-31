@@ -1,6 +1,8 @@
 import warnings
 from collections import defaultdict
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from typing import Optional
 
 import numpy as np
 from tqdm import TqdmWarning, tqdm
@@ -16,18 +18,35 @@ from tqdm.utils import (
 # TODO: how to work together with `color` argument?
 # TODO: include error/warning in default text part of tqdm info (e.g. 90/100 [1/1])
 
+__all__ = ["Tag", "TqdmTag", "TqdmErrorTag", "ColoredBar"]
+
+
+@dataclass
+class Tag:
+    """A named status tag with an optional color and status value.
+
+    Args:
+        name:   Tag identifier, also used as display label in the legend.
+        color:  Color for bar segments and legend swatch. Accepts named colors
+                (``"red"``, ``"yellow"``, …) or hex strings (``"#ff4444"``).
+                Defaults to ``None`` (inherits bar color).
+        status: Integer used to rank tags when multiple items share one bar
+                segment. Higher values take priority with ``reduce_op=max``
+                (the default). Auto-assigned (next available integer) if omitted.
+    """
+    name: str
+    color: Optional[str] = None
+    status: Optional[int] = None
+
 
 class TqdmTag(tqdm):
     def __init__(
         self,
         iterable=None,
-        # standard arguments needed for tqdm_tag
         total=None,
         colour=None,
-        # new params for color mapping
         default_status=0,
-        tag_to_status=None,
-        tag_to_color=None,
+        tags=None,
         reduce_op=max,
         reduce_ignore_default=False,
         legend=False,
@@ -45,7 +64,7 @@ class TqdmTag(tqdm):
             total = None
 
         # initialize the status for each iterable item
-        # needs to be set before super().__init__ because it calls overriden format_dict()
+        # needs to be set before super().__init__ because it calls overridden format_dict()
         if total is not None:
             # number of iterable items known -> preallocate
             self._item_status = np.zeros(total, dtype=np.uint8)
@@ -53,15 +72,17 @@ class TqdmTag(tqdm):
             # number unknown -> use python's dynamic sized list
             self._item_status = []
 
-        # color mapping options
+        # build tag mappings from the tags list
         self.default_status = default_status
         self.tag_to_status = {"default": default_status}
-        if tag_to_status is not None:
-            self.tag_to_status.update(tag_to_status)
-
         self.tag_to_color = {"default": colour}
-        if tag_to_color is not None:
-            self.tag_to_color.update(tag_to_color)
+
+        if tags is not None:
+            for t in tags:
+                next_status = max(self.tag_to_status.values()) + 1
+                self.tag_to_status[t.name] = t.status if t.status is not None else next_status
+                if t.color is not None:
+                    self.tag_to_color[t.name] = t.color
 
         self.status_to_tag = {val: key for key, val in self.tag_to_status.items()}
 
@@ -85,27 +106,35 @@ class TqdmTag(tqdm):
 
     # main API
     def tag(self, tag, color="none", status=None):
+        """Record the current item's status.
+
+        Args:
+            tag:    A :class:`Tag` object or a tag name string referencing a
+                    previously defined tag.
+            color:  Override the tag's color for this call. Ignored when
+                    ``"none"`` (the default sentinel).
+            status: Override the tag's status integer. Only used the first time
+                    a new tag name is registered.
         """
-        Record the current item's status.
-        # TODO
-        """
+        if isinstance(tag, Tag):
+            if color == "none" and tag.color is not None:
+                color = tag.color
+            if status is None:
+                status = tag.status
+            tag = tag.name
+
         i = self._current_item_idx
 
-        # add new tag
+        # register new tag name on first use
         if tag not in self.tag_to_status:
-            if status is None:
-                new_status = max(self.tag_to_status.values()) + 1
-            else:
-                new_status = status
+            new_status = status if status is not None else max(self.tag_to_status.values()) + 1
             self.tag_to_status[tag] = new_status
             self.status_to_tag[new_status] = tag
 
-        # update color if passed
         if color != "none":
             self.tag_to_color[tag] = color
 
-        status = self.tag_to_status[tag]
-        self._set_status(i, status)
+        self._set_status(i, self.tag_to_status[tag])
 
         if self._legend and tag != "default":
             self._tag_counts[tag] = self._tag_counts.get(tag, 0) + 1
@@ -485,31 +514,12 @@ class TqdmTag(tqdm):
 
 
 class TqdmErrorTag(TqdmTag):
-    def __init__(
-        self,
-        *args,
-        total=None,
-        colour=None,
-        default_status=0,
-        status_map=None,
-        status_colours=None,
-        reduce_op=max,
-        **kwargs,
-    ):
-        if status_map is None:
-            status_map = {"warn": 1, "error": 2}
-        if status_colours is None:
-            status_colours = {"warn": "yellow", "error": "red"}
-        super().__init__(
-            *args,
-            total=total,
-            colour=colour,
-            default_status=default_status,
-            tag_to_status=status_map,
-            tag_to_color=status_colours,
-            reduce_op=reduce_op,
-            **kwargs,
-        )
+    WARN  = Tag("warn",  color="yellow", status=1)
+    ERROR = Tag("error", color="red",    status=2)
+
+    def __init__(self, *args, tags=None, **kwargs):
+        base = [self.WARN, self.ERROR]
+        super().__init__(*args, tags=base + list(tags or []), **kwargs)
 
     def warn(self, **kwargs):
         self.tag("warn", **kwargs)
