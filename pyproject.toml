@@ -9,7 +9,7 @@ description = 'Enhance tqdm progress bars by assigning tags and colors to iterat
 readme = "README.md"
 requires-python = ">=3.8"
 license = "MIT"
-keywords = []
+keywords = ["tqdm", "progress", "color", "tag", "cli"]
 authors = [
   { name = "Colin Moldenhauer", email = "colin.moldenhauer@posteo.de" },
 ]
@@ -26,14 +26,32 @@ classifiers = [
 ]
 dependencies = ["tqdm", "numpy"]
 
+[project.optional-dependencies]
+docs = [
+  "sphinx>=7.0",
+  "furo>=2024.1.29",
+  "myst-parser>=2.0",
+  "sphinx-autodoc-typehints>=1.23",
+]
+
 [project.urls]
-Documentation = "https://github.com/Colin Moldenhauer/tqdm-tag#readme"
-Issues = "https://github.com/Colin Moldenhauer/tqdm-tag/issues"
-Source = "https://github.com/Colin Moldenhauer/tqdm-tag"
+Documentation = "https://tqdm-tag.readthedocs.io"
+Issues = "https://github.com/ColinMoldenhauer/tqdm-tag/issues"
+Source = "https://github.com/ColinMoldenhauer/tqdm-tag"
 
 [tool.hatch.version]
 source = "vcs"
 tag-pattern = "v(?P<version>.*)"
+
+[tool.hatch.build.targets.sdist]
+include = [
+  "src/tqdm_tag",
+  "README.md",
+  "pyproject.toml",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/tqdm_tag"]
 
 [tool.hatch.envs.types]
 extra-dependencies = [
@@ -61,11 +79,3 @@ exclude_lines = [
   "if __name__ == .__main__.:",
   "if TYPE_CHECKING:",
 ]
-
-[tool.hatch.build.targets.sdist]
-include = [
-  "src/tqdm_color",
-  "README.md",
-  "pyproject.toml",
-]
-

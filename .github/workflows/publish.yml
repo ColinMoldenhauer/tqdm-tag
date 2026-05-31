@@ -7,7 +7,7 @@ on:
 
 permissions:
   contents: read
-  id-token: write   # REQUIRED for trusted publishing
+  id-token: write   # required for trusted publishing
 
 jobs:
   publish:
@@ -16,6 +16,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # full history required for hatch-vcs tag detection
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -27,9 +29,6 @@ jobs:
 
       - name: Build package
         run: hatch build
-
-    #   - name: Test package
-    #     run: hatch run test
 
       - name: Publish package distributions to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1

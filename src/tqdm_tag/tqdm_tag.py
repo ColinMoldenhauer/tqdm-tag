@@ -104,10 +104,13 @@ class TqdmTag(tqdm):
 
     # helper function for coloring functionality
     def _set_status(self, idx, status):
-        if self.total:
+        if self.total is not None:
             self._item_status[idx] = status
         else:
-            self._item_status.append(self.default_status)
+            if idx < len(self._item_status):
+                self._item_status[idx] = status
+            else:
+                self._item_status.append(status)
 
     @staticmethod
     def _get_colors(
@@ -120,7 +123,10 @@ class TqdmTag(tqdm):
         reduce_ignore_default=False,
         **kwargs,
     ):
-        if n_segments > len(item_status):  # more segements to draw than items -> multiple segments per item ()
+        if len(item_status) == 0:
+            return [None] * n_segments
+
+        if n_segments > len(item_status):  # more segments to draw than items -> multiple segments per item
             indices = np.linspace(0, len(item_status) - 1e-5, n_segments)
             indices = np.floor(indices).astype(int)
             spl = [np.array([item_status[i]]) for i in indices]
@@ -436,11 +442,15 @@ class TqdmErrorTag(TqdmTag):
         total=None,
         colour=None,
         default_status=0,
-        status_map={"warn": 1, "error": 2},
-        status_colours={"warn": "yellow", "error": "red"},
+        status_map=None,
+        status_colours=None,
         reduce_op=max,
         **kwargs,
     ):
+        if status_map is None:
+            status_map = {"warn": 1, "error": 2}
+        if status_colours is None:
+            status_colours = {"warn": "yellow", "error": "red"}
         super().__init__(
             *args,
             total=total,
