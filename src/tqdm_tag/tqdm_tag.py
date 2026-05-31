@@ -30,6 +30,7 @@ class TqdmTag(tqdm):
         tag_to_color=None,
         reduce_op=max,
         reduce_ignore_default=False,
+        legend=False,
         **kwargs,
     ):
         # replicate tqdm's total parsing
@@ -65,6 +66,9 @@ class TqdmTag(tqdm):
 
         self.reduce_op = reduce_op
         self.reduce_ignore_default = reduce_ignore_default
+        self._legend = legend
+        self._tag_counts = {}
+        self._legend_active = False  # tracks whether a legend line has been written
 
         super().__init__(iterable=iterable, total=total, colour=colour, **kwargs)
 
@@ -99,8 +103,10 @@ class TqdmTag(tqdm):
             self.tag_to_color[tag] = color
 
         status = self.tag_to_status[tag]
-
         self._set_status(i, status)
+
+        if self._legend and tag != "default":
+            self._tag_counts[tag] = self._tag_counts.get(tag, 0) + 1
 
     # helper function for coloring functionality
     def _set_status(self, idx, status):
@@ -433,6 +439,40 @@ class TqdmTag(tqdm):
                 f"{(prefix + ': ') if prefix else ''}"
                 f"{n_fmt}{unit} [{elapsed_str}, {rate_fmt}{postfix}]"
             )
+
+    def _format_legend(self):
+        parts = []
+        _tmp = ColoredBar(0, 1)
+        swatch_char = "#" if self.ascii else "■"  # ■ or ASCII fallback
+        for tag_name, count in self._tag_counts.items():
+            color = self.tag_to_color.get(tag_name)
+            swatch = swatch_char
+            ansi = _tmp._resolve_colour(color)
+            if ansi:
+                swatch = f"{ansi}{swatch_char}{ColoredBar.COLOUR_RESET}"
+            parts.append(f"{swatch} {tag_name}: {count}")
+        return "   ".join(parts)
+
+    def display(self, msg=None, pos=None):
+        super().display(msg=msg, pos=pos)
+        if not self._legend or not self._tag_counts:
+            return
+        if not getattr(self.fp, "isatty", lambda: False)():
+            return
+        legend = self._format_legend()
+        width = self.ncols or 80
+        # move to legend line, write (padded to clear old content), return to bar line
+        self.fp.write(f"\n{legend:<{width}}\x1b[A\r")
+        self.fp.flush()
+        self._legend_active = True
+
+    def close(self):
+        super().close()
+        # super().close() ends with \n that lands the cursor on the legend line;
+        # write one more \n so subsequent output starts below the legend
+        if self._legend_active:
+            self.fp.write("\n")
+            self.fp.flush()
 
 
 class TqdmErrorTag(TqdmTag):
