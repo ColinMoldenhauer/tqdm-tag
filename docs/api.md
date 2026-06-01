@@ -1,28 +1,17 @@
 # API Reference
 
+## Tag
+
+::: tqdm_tag.Tag
+
 ## TqdmTag
 
-```{eval-rst}
-.. autoclass:: tqdm_tag.TqdmTag
-   :members:
-   :undoc-members:
-   :show-inheritance:
-```
+::: tqdm_tag.TqdmTag
 
 ## TqdmErrorTag
 
-```{eval-rst}
-.. autoclass:: tqdm_tag.TqdmErrorTag
-   :members:
-   :undoc-members:
-   :show-inheritance:
-```
+::: tqdm_tag.TqdmErrorTag
 
 ## ColoredBar
 
-```{eval-rst}
-.. autoclass:: tqdm_tag.ColoredBar
-   :members:
-   :undoc-members:
-   :show-inheritance:
-```
+::: tqdm_tag.ColoredBar

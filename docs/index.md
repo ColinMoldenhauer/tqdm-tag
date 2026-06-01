@@ -2,13 +2,6 @@
 
 **tqdm-tag** enhances [tqdm](https://tqdm.github.io/) progress bars by letting you assign a colored status tag to each item as it is processed — making warnings, errors, or any custom outcome immediately visible in the progress bar itself.
 
-```{toctree}
-:maxdepth: 2
-:hidden:
-
-api
-```
-
 ## Installation
 
 ```bash
@@ -36,9 +29,7 @@ Processing:  73%|████████████████████   
 ■ warn: 4   ■ error: 1
 ```
 
-## API reference
-
-See {doc}`api` for full class and method documentation.
+See the [API reference](api.md) for full class and method documentation.
 
 ## Features
 
@@ -67,7 +58,7 @@ for i in pbar:
 
 ### Custom tags with TqdmTag
 
-Use `Tag` objects to group name, color, and status together. `status` is auto-assigned (next available integer) if omitted:
+Use `Tag` objects to group name, color, and status together. `status` is auto-assigned if omitted:
 
 ```python
 from tqdm_tag import Tag, TqdmTag
@@ -78,7 +69,7 @@ pbar = TqdmTag(
     legend=True,
 )
 for i in pbar:
-    if i == 10: pbar.tag("warn")    # reference by name string
+    if i == 10: pbar.tag("warn")
     if i == 80: pbar.tag("error")
 ```
 

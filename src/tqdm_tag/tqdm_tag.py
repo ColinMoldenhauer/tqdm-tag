@@ -25,14 +25,18 @@ __all__ = ["Tag", "TqdmTag", "TqdmErrorTag", "ColoredBar"]
 class Tag:
     """A named status tag with an optional color and status value.
 
-    Args:
-        name:   Tag identifier, also used as display label in the legend.
-        color:  Color for bar segments and legend swatch. Accepts named colors
-                (``"red"``, ``"yellow"``, …) or hex strings (``"#ff4444"``).
-                Defaults to ``None`` (inherits bar color).
-        status: Integer used to rank tags when multiple items share one bar
-                segment. Higher values take priority with ``reduce_op=max``
-                (the default). Auto-assigned (next available integer) if omitted.
+    Parameters
+    ----------
+    name : str
+        Tag identifier, also used as display label in the legend.
+    color : str, optional
+        Color for bar segments and legend swatch. Accepts named colors
+        (`"red"`, `"yellow"`, …) or hex strings (`"#ff4444"`).
+        Defaults to `None` (inherits bar color).
+    status : int, optional
+        Integer used to rank tags when multiple items share one bar segment.
+        Higher values take priority with `reduce_op=max` (the default).
+        Auto-assigned (next available integer) if omitted.
     """
     name: str
     color: Optional[str] = None
@@ -108,13 +112,17 @@ class TqdmTag(tqdm):
     def tag(self, tag, color="none", status=None):
         """Record the current item's status.
 
-        Args:
-            tag:    A :class:`Tag` object or a tag name string referencing a
-                    previously defined tag.
-            color:  Override the tag's color for this call. Ignored when
-                    ``"none"`` (the default sentinel).
-            status: Override the tag's status integer. Only used the first time
-                    a new tag name is registered.
+        Parameters
+        ----------
+        tag : str or Tag
+            A `Tag` object or a tag name string referencing a previously
+            defined tag.
+        color : str, optional
+            Override the tag's color for this call. Ignored when `"none"`
+            (the default sentinel).
+        status : int, optional
+            Override the tag's status integer. Only used the first time
+            a new tag name is registered.
         """
         if isinstance(tag, Tag):
             if color == "none" and tag.color is not None:
@@ -238,69 +246,58 @@ class TqdmTag(tqdm):
         colour=None,
         **extra_kwargs,
     ):
-        """
-        Return a string-based progress bar given some parameters
+        """Return a string-based progress bar given some parameters.
+
+        Overrides `tqdm.format_meter` to render `{bar}` as a `ColoredBar`
+        with segments colored by item status.
 
         Parameters
         ----------
-        n  : int or float
+        n : int or float
             Number of finished iterations.
-        total  : int or float
-            The expected total number of iterations. If meaningless (None),
-            only basic progress statistics are displayed (no ETA).
-        elapsed  : float
-            Number of seconds passed since start.
-        ncols  : int, optional
-            The width of the entire output message. If specified,
-            dynamically resizes `{bar}` to stay within this bound
-            [default: None]. If `0`, will not print any bar (only stats).
-            The fallback is `{bar:10}`.
-        prefix  : str, optional
-            Prefix message (included in total width) [default: ''].
-            Use as {desc} in bar_format string.
-        ascii  : bool, optional or str, optional
-            If not set, use unicode (smooth blocks) to fill the meter
-            [default: False]. The fallback is to use ASCII characters
-            " 123456789#".
-        unit  : str, optional
-            The iteration unit [default: 'it'].
-        unit_scale  : bool or int or float, optional
-            If 1 or True, the number of iterations will be printed with an
-            appropriate SI metric prefix (k = 10^3, M = 10^6, etc.)
-            [default: False]. If any other non-zero number, will scale
-            `total` and `n`.
-        rate  : float, optional
-            Manual override for iteration rate.
-            If [default: None], uses n/elapsed.
-        bar_format  : str, optional
-            Specify a custom bar string formatting. May impact performance.
-            [default: '{l_bar}{bar}{r_bar}'], where
-            l_bar='{desc}: {percentage:3.0f}%|' and
-            r_bar='| {n_fmt}/{total_fmt} [{elapsed}<{remaining}, '
-              '{rate_fmt}{postfix}]'
-            Possible vars: l_bar, bar, r_bar, n, n_fmt, total, total_fmt,
-              percentage, elapsed, elapsed_s, ncols, nrows, desc, unit,
-              rate, rate_fmt, rate_noinv, rate_noinv_fmt,
-              rate_inv, rate_inv_fmt, postfix, unit_divisor,
-              remaining, remaining_s, eta.
-            Note that a trailing ": " is automatically removed after {desc}
-            if the latter is empty.
-        postfix  : *, optional
-            Similar to `prefix`, but placed at the end
-            (e.g. for additional stats).
-            Note: postfix is usually a string (not a dict) for this method,
-            and will if possible be set to postfix = ', ' + postfix.
-            However other types are supported (#382).
-        unit_divisor  : float, optional
-            [default: 1000], ignored unless `unit_scale` is True.
-        initial  : int or float, optional
-            The initial counter value [default: 0].
-        colour  : str, optional
-            Bar colour (e.g. 'green', '#00ff00').
+        total : int or float, optional
+            Expected total number of iterations. `None` disables ETA.
+        elapsed : float
+            Seconds elapsed since start.
+        ncols : int, optional
+            Total output width. Dynamically resizes `{bar}` to fit.
+            `0` prints only stats, no bar.
+        prefix : str, optional
+            Prefix message; available as `{desc}` in bar_format.
+        ascii : bool or str, optional
+            Use ASCII characters instead of Unicode smooth blocks.
+        unit : str, optional
+            Iteration unit label (default `"it"`).
+        unit_scale : bool or int or float, optional
+            If `True` or `1`, apply SI prefixes (k, M, …). Any other
+            non-zero number scales `total` and `n` directly.
+        rate : float, optional
+            Manual iteration rate override (default: `n / elapsed`).
+        bar_format : str, optional
+            Custom bar string. Default: `"{l_bar}{bar}{r_bar}"` where
+            `l_bar = "{desc}: {percentage:3.0f}%|"` and
+            `r_bar = "| {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}{postfix}]"`.
+            Available placeholders: `l_bar`, `bar`, `r_bar`, `n`, `n_fmt`,
+            `total`, `total_fmt`, `percentage`, `elapsed`, `elapsed_s`,
+            `ncols`, `nrows`, `desc`, `unit`, `rate`, `rate_fmt`,
+            `rate_noinv`, `rate_noinv_fmt`, `rate_inv`, `rate_inv_fmt`,
+            `postfix`, `unit_divisor`, `remaining`, `remaining_s`, `eta`.
+        postfix : str, optional
+            Additional stats appended after the bar.
+        unit_divisor : float, optional
+            Divisor used when `unit_scale` is active (default: `1000`).
+        initial : int or float, optional
+            Initial counter value (default: `0`).
+        colour : str, optional
+            Bar colour, e.g. `"green"` or `"#00ff00"`.
+        **extra_kwargs
+            Forwarded from `TqdmTag.format_dict`
+            (`item_status`, `status_to_tag`, `tag_to_color`, …).
 
         Returns
         -------
-        out  : Formatted meter and stats, ready to display.
+        str
+            Formatted meter string ready for display.
         """
 
         # sanity check: total
