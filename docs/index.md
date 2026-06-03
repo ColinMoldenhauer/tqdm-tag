@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="../assets/logo-text.png" alt="tqdm-tag" height="120"/>
+</p>
+
 # tqdm-tag
 
 **tqdm-tag** enhances [tqdm](https://tqdm.github.io/) progress bars by letting you assign a colored status tag to each item as it is processed — making warnings, errors, or any custom outcome immediately visible in the progress bar itself.

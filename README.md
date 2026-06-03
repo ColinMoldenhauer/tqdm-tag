@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/logo-text.png" alt="tqdm-tag" height="120"/>
+</p>
+
 # tqdm-tag
 
 > Color-code individual items in a tqdm progress bar by tagging them with a status.
