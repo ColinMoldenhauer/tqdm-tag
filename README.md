@@ -43,10 +43,10 @@ for item in pbar:
 
 With `legend=True`, a live second line below the bar shows running counts:
 
-```
-Processing:  73%|████████████████████    | 73/100 [00:03<00:01, 12.5it/s]
-■ warn: 4   ■ error: 1
-```
+
+$\texttt{Processing:\ \ 73}\\%|\color{#a6e3a1}{\texttt{████████████}}\color{#f9e2af}{\texttt{███}}\color{#a6e3a1}{\texttt{███}}\color{#f38ba8}{\texttt{█}}\color{#aaaaaa}{\texttt{████}}\color{#ffffff}{\texttt{ |\ 73/100\ [00:03{<}00:01,\ 12.5it/s]}}$
+
+$\color{#f9e2af}{\texttt{█\ warn:\ 4}}$ &ensp; $\color{#f38ba8}{\texttt{█\ error:\ 1}}$
 
 ### Custom tags with TqdmTag
 
