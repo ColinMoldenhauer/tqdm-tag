@@ -44,9 +44,9 @@ for item in pbar:
 With `legend=True`, a live second line below the bar shows running counts:
 
 
-$\texttt{Processing:\ \ 73}\\%|\color{#a6e3a1}{\texttt{████████████}}\color{#f9e2af}{\texttt{███}}\color{#a6e3a1}{\texttt{███}}\color{#f38ba8}{\texttt{█}}\color{#aaaaaa}{\texttt{████}}\color{#ffffff}{\texttt{ |\ 73/100\ [00:03{<}00:01,\ 12.5it/s]}}$
+$\texttt{Processing:\ \ 73}\\%|\color[RGB]{166,227,161}{\texttt{████████████}}\color[RGB]{249,226,175}{\texttt{███}}\color[RGB]{166,227,161}{\texttt{███}}\color[RGB]{243,139,168}{\texttt{█}}\color[RGB]{170,170,170}{\texttt{████}}\color[RGB]{255,255,255}{\texttt{ |\ 73/100\ [00:03{<}00:01,\ 12.5it/s]}}$
 
-$\color{#f9e2af}{\texttt{█\ warn:\ 4}}$ &ensp; $\color{#f38ba8}{\texttt{█\ error:\ 1}}$
+$\color[RGB]{249,226,175}{\texttt{█\ warn:\ 4}}$ &ensp; $\color[RGB]{243,139,168}{\texttt{█\ error:\ 1}}$
 
 ### Custom tags with TqdmTag
 
