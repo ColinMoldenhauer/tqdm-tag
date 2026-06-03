@@ -27,6 +27,9 @@ classifiers = [
 dependencies = ["tqdm", "numpy"]
 
 [project.optional-dependencies]
+dev = [
+  "pytest",
+]
 docs = [
   "mkdocs",
   "mkdocs-material",

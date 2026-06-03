@@ -8,6 +8,7 @@
 
 [![PyPI](https://img.shields.io/pypi/v/tqdm-tag)](https://pypi.org/project/tqdm-tag/)
 [![Python](https://img.shields.io/pypi/pyversions/tqdm-tag)](https://pypi.org/project/tqdm-tag/)
+[![Tests](https://github.com/ColinMoldenhauer/tqdm-tag/actions/workflows/tests.yml/badge.svg)](https://github.com/ColinMoldenhauer/tqdm-tag/actions/workflows/tests.yml)
 [![Docs](https://readthedocs.org/projects/tqdm-tag/badge/?version=latest)](https://tqdm-tag.readthedocs.io)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
