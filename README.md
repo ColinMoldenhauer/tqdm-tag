@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/logo-text.png" alt="tqdm-tag" height="120"/>
+  <img src="docs/assets/logo-text.png" alt="tqdm-tag" height="120"/>
 </p>
 
 # tqdm-tag
@@ -15,7 +15,7 @@
 
 ---
 
-![demo](assets/demo.svg)
+![demo](docs/assets/demo.svg)
 
 *Top: plain tqdm (monochrome). Bottom: tqdm-tag coloring each processed item by outcome.*
 
