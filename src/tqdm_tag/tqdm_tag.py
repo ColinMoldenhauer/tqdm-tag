@@ -44,6 +44,46 @@ class Tag:
 
 
 class TqdmTag(tqdm):
+    """A `tqdm` progress bar whose segments are colored by per-item tags.
+
+    Each iteration starts at `default_status`; calling `tag()` during the
+    loop body records a different status for the current item. When the
+    bar is rendered, each displayed segment's color is derived from the
+    statuses of the items it represents (via `reduce_op`), using the
+    color registered for the corresponding tag.
+
+    Parameters
+    ----------
+    iterable : iterable, optional
+        Iterable to decorate, same as in `tqdm`.
+    total : int, optional
+        Expected number of iterations, same as in `tqdm`.
+    colour : str, optional
+        Default bar colour, used for items still at `default_status`.
+    default_status : int, optional
+        Status value assigned to every item before `tag()` is called
+        on it (default `0`).
+    tags : list of Tag, optional
+        Tags to pre-register, in addition to the implicit `"default"`
+        tag. Tags used for the first time via `tag()` are auto-registered.
+    reduce_op : callable, optional
+        Reduction applied to the statuses within a bar segment to pick
+        the status (and therefore color) representing that segment
+        (default `max`, i.e. highest-status tag wins).
+    reduce_ignore_default : bool, optional
+        If `True`, exclude items still at `default_status` from the
+        reduction within a segment, unless the whole segment is at
+        `default_status` (default `False`).
+    legend : bool, optional
+        If `True`, print a legend line below the bar showing tag counts
+        (default `False`).
+    legend_format : callable, optional
+        Custom function `(tag_counts, tag_to_color) -> str` to render the
+        legend. Defaults to the built-in colored swatch format.
+    **kwargs
+        Forwarded to `tqdm.__init__`.
+    """
+
     def __init__(
         self,
         iterable=None,
@@ -100,6 +140,12 @@ class TqdmTag(tqdm):
         super().__init__(iterable=iterable, total=total, colour=colour, **kwargs)
 
     def __iter__(self):
+        """Iterate over the wrapped iterable, resetting each item's status.
+
+        Before yielding each item, its status is set to `default_status`
+        so that a fresh item that isn't explicitly `tag()`-ed still
+        renders with the default color.
+        """
         for i, item in enumerate(super().__iter__()):
             # record status for this iteration as default
             self._set_status(i, self.default_status)
@@ -149,6 +195,11 @@ class TqdmTag(tqdm):
 
     # helper function for coloring functionality
     def _set_status(self, idx, status):
+        """Record `status` for item `idx` in `self._item_status`.
+
+        Writes into the preallocated array when `total` is known,
+        otherwise appends to (or overwrites within) the dynamic list.
+        """
         if self.total is not None:
             self._item_status[idx] = status
         else:
@@ -168,6 +219,42 @@ class TqdmTag(tqdm):
         reduce_ignore_default=False,
         **kwargs,
     ):
+        """Compute a color per bar segment from per-item statuses.
+
+        Splits `item_status` into `n_segments` chunks (or, if there are
+        fewer items than segments, maps each item to one or more
+        segments), reduces the statuses within each chunk to a single
+        representative status via `reduce_op`, and resolves that status
+        to a tag's color.
+
+        Parameters
+        ----------
+        n_segments : int
+            Number of bar segments to color.
+        item_status : sequence of int
+            Status recorded for each iterated item so far.
+        status_to_tag : dict
+            Maps status integer to tag name.
+        tag_to_color : dict
+            Maps tag name to color.
+        default_status : int
+            Status value considered "untagged"; used by
+            `reduce_ignore_default`.
+        reduce_op : callable, optional
+            Reduction applied to the statuses in a segment (default `max`).
+        reduce_ignore_default : bool, optional
+            If `True`, exclude `default_status` items from the reduction
+            within a segment unless the whole segment is at
+            `default_status` (default `False`).
+        **kwargs
+            Ignored; allows passing a superset dict (e.g. `format_dict`)
+            via `**` unpacking.
+
+        Returns
+        -------
+        list
+            One color (or `None`) per segment, length `n_segments`.
+        """
         if len(item_status) == 0:
             return [None] * n_segments
 
@@ -469,6 +556,17 @@ class TqdmTag(tqdm):
             )
 
     def _format_legend(self):
+        """Build the legend line shown below the bar.
+
+        Uses `legend_format` if one was supplied, otherwise renders one
+        colored swatch and count per tag that has been used at least
+        once, ordered by the tag's status value.
+
+        Returns
+        -------
+        str
+            The formatted legend line.
+        """
         if self._legend_format is not None:
             return self._legend_format(self._tag_counts, self.tag_to_color)
 
@@ -489,6 +587,20 @@ class TqdmTag(tqdm):
         return "   ".join(parts)
 
     def display(self, msg=None, pos=None):
+        """Render the bar, then print the legend line beneath it if enabled.
+
+        Overrides `tqdm.display`. The legend is only written to a TTY
+        (it would corrupt output otherwise) and the cursor is returned
+        to the bar's line afterward so subsequent bar updates overwrite
+        in place.
+
+        Parameters
+        ----------
+        msg : str, optional
+            Pre-formatted status message, same as in `tqdm.display`.
+        pos : int, optional
+            Line offset for multi-bar displays, same as in `tqdm.display`.
+        """
         super().display(msg=msg, pos=pos)
         if not self._legend or not self._tag_counts:
             return
@@ -502,6 +614,10 @@ class TqdmTag(tqdm):
         self._legend_active = True
 
     def close(self):
+        """Close the bar, then move past the legend line if one was drawn.
+
+        Overrides `tqdm.close`.
+        """
         super().close()
         # super().close() ends with \n that lands the cursor on the legend line;
         # write one more \n so subsequent output starts below the legend
@@ -511,21 +627,60 @@ class TqdmTag(tqdm):
 
 
 class TqdmErrorTag(TqdmTag):
+    """A `TqdmTag` with `"warn"` and `"error"` tags pre-registered.
+
+    Adds convenience `warn()`/`error()` methods on top of the generic
+    `tag()` API. `"error"` has a higher status than `"warn"`, so with the
+    default `reduce_op=max` a segment containing both is shown as an error.
+    """
+
     WARN  = Tag("warn",  color="yellow", status=1)
     ERROR = Tag("error", color="red",    status=2)
 
     def __init__(self, *args, tags=None, **kwargs):
+        """Initialize with the `warn`/`error` tags prepended to `tags`.
+
+        Parameters
+        ----------
+        *args
+            Forwarded to `TqdmTag.__init__`.
+        tags : list of Tag, optional
+            Additional tags to register alongside `WARN` and `ERROR`.
+        **kwargs
+            Forwarded to `TqdmTag.__init__`.
+        """
         base = [self.WARN, self.ERROR]
         super().__init__(*args, tags=base + list(tags or []), **kwargs)
 
     def warn(self, **kwargs):
+        """Mark the current item with the `"warn"` tag.
+
+        Parameters
+        ----------
+        **kwargs
+            Forwarded to `TqdmTag.tag` (e.g. `color`, `status` overrides).
+        """
         self.tag("warn", **kwargs)
 
     def error(self, **kwargs):
+        """Mark the current item with the `"error"` tag.
+
+        Parameters
+        ----------
+        **kwargs
+            Forwarded to `TqdmTag.tag` (e.g. `color`, `status` overrides).
+        """
         self.tag("error", **kwargs)
 
 
 class ColoredBar(Bar):
+    """Drop-in replacement for `tqdm.std.Bar` supporting per-segment color.
+
+    Behaves like `Bar` when formatted (supports the same `format_spec`
+    suffixes `a`/`u`/`b` and numeric width), but colors each rendered
+    block according to `segment_colours` using ANSI escape codes.
+    """
+
     ASCII = " 123456789#"
     UTF = " " + "".join(map(chr, range(0x258F, 0x2587, -1)))
     BLANK = "  "
@@ -543,6 +698,23 @@ class ColoredBar(Bar):
     }
 
     def __init__(self, frac, default_len=10, charset=UTF, segment_colours=None):
+        """Create a bar renderer for the given fraction complete.
+
+        Parameters
+        ----------
+        frac : float
+            Fraction of the bar that is filled, in `[0, 1]`. Values
+            outside the range are clamped with a warning.
+        default_len : int, optional
+            Number of segments to render when `__format__` isn't given
+            an explicit width (default `10`).
+        charset : str, optional
+            String of characters from emptiest to fullest block, used
+            to render partial segments (default `UTF`).
+        segment_colours : sequence, optional
+            Color (name, hex string, or `None`) for each segment, indexed
+            in render order.
+        """
         if not 0 <= frac <= 1:
             warnings.warn("clamping frac to range [0, 1]", TqdmWarning, stacklevel=2)
             frac = max(0, min(1, frac))
@@ -553,6 +725,20 @@ class ColoredBar(Bar):
         self.segment_colours = segment_colours
 
     def _resolve_colour(self, value):
+        """Resolve a color name or hex string to an ANSI escape sequence.
+
+        Parameters
+        ----------
+        value : str or None
+            A key in `COLOURS` (case-insensitive), a `"#rrggbb"` hex
+            string, or `None`.
+
+        Returns
+        -------
+        str or None
+            The ANSI escape sequence, or `None` if `value` is `None` or
+            unrecognized.
+        """
         if value is None:
             return None
         if isinstance(value, str):
@@ -565,6 +751,23 @@ class ColoredBar(Bar):
         return None
 
     def __format__(self, format_spec):
+        """Render the bar to a string, coloring each segment.
+
+        Supports the same `format_spec` as `tqdm.std.Bar`: an optional
+        trailing `a`/`u`/`b` selects the ASCII/UTF/BLANK charset, and a
+        leading integer sets the bar width (negative values subtract
+        from `default_len`).
+
+        Parameters
+        ----------
+        format_spec : str
+            Format specification, e.g. `""`, `"20"`, `"20a"`, `"-5u"`.
+
+        Returns
+        -------
+        str
+            The rendered, ANSI-colored bar.
+        """
         # --- parse format spec exactly like tqdm ---
         if format_spec:
             _type = format_spec[-1].lower()
