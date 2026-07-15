@@ -44,45 +44,6 @@ class Tag:
 
 
 class TqdmTag(tqdm):
-    """A `tqdm` progress bar whose segments are colored by per-item tags.
-
-    Each iteration starts at `default_status`; calling `tag()` during the
-    loop body records a different status for the current item. When the
-    bar is rendered, each displayed segment's color is derived from the
-    statuses of the items it represents (via `reduce_op`), using the
-    color registered for the corresponding tag.
-
-    Parameters
-    ----------
-    iterable : iterable, optional
-        Iterable to decorate, same as in `tqdm`.
-    total : int, optional
-        Expected number of iterations, same as in `tqdm`.
-    colour : str, optional
-        Default bar colour, used for items still at `default_status`.
-    default_status : int, optional
-        Status value assigned to every item before `tag()` is called
-        on it (default `0`).
-    tags : list of Tag, optional
-        Tags to pre-register, in addition to the implicit `"default"`
-        tag. Tags used for the first time via `tag()` are auto-registered.
-    reduce_op : callable, optional
-        Reduction applied to the statuses within a bar segment to pick
-        the status (and therefore color) representing that segment
-        (default `max`, i.e. highest-status tag wins).
-    reduce_ignore_default : bool, optional
-        If `True`, exclude items still at `default_status` from the
-        reduction within a segment, unless the whole segment is at
-        `default_status` (default `False`).
-    legend : bool, optional
-        If `True`, print a legend line below the bar showing tag counts
-        (default `False`).
-    legend_format : callable, optional
-        Custom function `(tag_counts, tag_to_color) -> str` to render the
-        legend. Defaults to the built-in colored swatch format.
-    **kwargs
-        Forwarded to `tqdm.__init__`.
-    """
 
     def __init__(
         self,
@@ -97,6 +58,49 @@ class TqdmTag(tqdm):
         legend_format=None,
         **kwargs,
     ):
+        """A `tqdm` progress bar whose segments are colored by per-item tags.
+
+        Each iteration starts at `default_status`; calling `tag()` during the
+        loop body records a different status for the current item. When the
+        bar is rendered, each displayed segment's color is derived from the
+        statuses of the items it represents (via `reduce_op`), using the
+        color registered for the corresponding tag.
+
+        Parameters
+        ----------
+        iterable : iterable, optional
+            Iterable to decorate, same as in `tqdm`.
+        total : int, optional
+            Expected number of iterations, same as in `tqdm`.
+        colour : str, optional
+            Default bar colour, used for items still at `default_status`.
+        default_status : int, optional
+            Status value assigned to every item before `tag()` is called
+            on it (default `0`).
+        tags : list of Tag, optional
+            Tags to pre-register, in addition to the implicit `"default"`
+            tag. Tags used for the first time via `tag()` are auto-registered.
+        reduce_op : callable, optional
+            Reduction applied to the statuses within a bar segment to pick
+            the status (and therefore color) representing that segment
+            (default `max`, i.e. highest-status tag wins).
+        reduce_ignore_default : bool, optional
+            If `True`, exclude items still at `default_status` from the
+            reduction within a segment, unless the whole segment is at
+            `default_status` (default `False`).
+        legend : bool, optional
+            If `True`, print a legend line below the bar showing tag counts
+            (default `False`).
+        legend_format : callable or str, optional
+            Customizes the legend line. A callable is invoked as
+            `legend_format(tag_counts, tag_to_color) -> str` for full control.
+            A `str` is used as a template with a `{legend}` placeholder for
+            the default swatch rendering (e.g. `"tags: {legend}"`). Defaults
+            (`None`) to the built-in colored swatch format, unchanged.
+        **kwargs
+            Forwarded to `tqdm.__init__`.
+        """
+
         # replicate tqdm's total parsing
         if total is None and iterable is not None:
             try:
