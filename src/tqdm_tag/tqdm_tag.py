@@ -134,7 +134,9 @@ class TqdmTag(tqdm):
         self.reduce_ignore_default = reduce_ignore_default
         self._legend = legend
         self._legend_format = legend_format
-        self._tag_counts = {}
+        # pre-registered tags start at count 0 so the legend is visible
+        # from the start, rather than only appearing once a tag is first used
+        self._tag_counts = {name: 0 for name in self.tag_to_status if name != "default"}
         self._legend_active = False  # tracks whether a legend line has been written
 
         super().__init__(iterable=iterable, total=total, colour=colour, **kwargs)
@@ -602,11 +604,13 @@ class TqdmTag(tqdm):
             Line offset for multi-bar displays, same as in `tqdm.display`.
         """
         super().display(msg=msg, pos=pos)
-        if not self._legend or not self._tag_counts:
+        if not self._legend:
             return
         if not getattr(self.fp, "isatty", lambda: False)():
             return
         legend = self._format_legend()
+        if not legend:
+            return
         width = self.ncols or 80
         # move to legend line, write (padded to clear old content), return to bar line
         self.fp.write(f"\n{legend:<{width}}\x1b[A\r")
