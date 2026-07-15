@@ -264,12 +264,15 @@ class TqdmTag(tqdm):
         if len(item_status) == 0:
             return [None] * n_segments
 
+        # shared linear boundary (floor(k * total / n_segments)) for both branches
+        # below, matching the `filled` boundary ColoredBar.__format__ derives from
+        # the same frac - two independently-computed boundaries would otherwise
+        # disagree, displacing the rendered segment from the true progress edge
+        edges = (np.arange(n_segments + 1) * len(item_status)) // n_segments
         if n_segments > len(item_status):  # more segments to draw than items -> multiple segments per item
-            indices = np.linspace(0, len(item_status) - 1e-5, n_segments)
-            indices = np.floor(indices).astype(int)
-            spl = [np.array([item_status[i]]) for i in indices]
+            spl = [np.array([item_status[edges[i]]]) for i in range(n_segments)]
         else:  # more elements than segments -> each segment may contain different stati
-            spl = np.array_split(item_status, n_segments)
+            spl = [item_status[edges[i]:edges[i + 1]] for i in range(n_segments)]
 
         # assign
         def reducer(sp):

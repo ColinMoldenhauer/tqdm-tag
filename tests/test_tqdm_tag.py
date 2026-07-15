@@ -135,6 +135,117 @@ def test_get_colors_empty():
     assert colors == [None] * 5
 
 
+def test_get_colors_segment_boundary_matches_filled():
+    """`_get_colors`'s bucket boundaries must agree with the `filled`
+    boundary `ColoredBar.__format__` derives from the same `frac`, or the
+    colored segment renders displaced from the true progress edge.
+
+    Concrete regression case: total=50, n_segments=20, n=33 (item at
+    0-indexed position 32 just tagged). `np.array_split` puts that item in
+    bucket 11, while `ColoredBar.__format__` independently computes
+    `filled=13` from `frac=n/total` - a 2-segment disagreement.
+    """
+    total, n_segments, n = 50, 20, 33
+    item_status = np.zeros(total, dtype=np.uint8)
+    item_status[n - 1] = 1  # tag the just-processed item
+
+    colors = TqdmTag._get_colors(
+        n_segments=n_segments,
+        item_status=item_status,
+        status_to_tag={0: "default", 1: "warn"},
+        tag_to_color={"default": None, "warn": "yellow"},
+        default_status=0,
+    )
+    tagged_segment = colors.index("yellow")
+
+    # same boundary ColoredBar.__format__ uses to pick which segments render
+    # as fully "filled" for this frac
+    frac = n / total
+    nsyms = len(ColoredBar.UTF) - 1
+    filled, _ = divmod(int(frac * n_segments * nsyms), nsyms)
+
+    assert tagged_segment == filled
+
+
+@pytest.mark.parametrize("total", range(10, 60, 7))
+@pytest.mark.parametrize("n_segments", range(2, 21, 3))
+def test_get_colors_boundary_never_off_by_more_than_one(total, n_segments):
+    """Across a range of (total, n_segments), the segment `_get_colors`
+    assigns a tagged item to must never diverge from `filled` by more than
+    one segment - a wider divergence would leave a tagged status invisible
+    or visibly out of place relative to the fill edge.
+
+    Only exercises `n_segments <= total` (the branch the reported bug hit):
+    when `n_segments > total`, several segments legitimately map to the same
+    item (many-to-one), so `colors.index("yellow")` no longer corresponds
+    to a single boundary and isn't comparable to `filled` this way - see
+    `test_get_colors_sparse_branch_*` below for that branch instead.
+    """
+    if n_segments > total:
+        pytest.skip("many-to-one mapping in this branch; see sparse-branch tests")
+
+    nsyms = len(ColoredBar.UTF) - 1
+    for n in range(1, total + 1):
+        item_status = np.zeros(total, dtype=np.uint8)
+        item_status[n - 1] = 1
+
+        colors = TqdmTag._get_colors(
+            n_segments=n_segments,
+            item_status=item_status,
+            status_to_tag={0: "default", 1: "warn"},
+            tag_to_color={"default": None, "warn": "yellow"},
+            default_status=0,
+        )
+        tagged_segment = colors.index("yellow")
+
+        frac = n / total
+        filled, _ = divmod(int(frac * n_segments * nsyms), nsyms)
+
+        assert abs(tagged_segment - filled) <= 1, (
+            f"total={total} n_segments={n_segments} n={n}: "
+            f"tagged_segment={tagged_segment} filled={filled}"
+        )
+
+
+def test_get_colors_sparse_branch_uses_same_boundary_formula():
+    """When there are more segments than items (`n_segments > total`), each
+    segment should sample the item at its bucket's start edge - the same
+    `edges = floor(k * total / n_segments)` formula the dense branch and
+    `ColoredBar.__format__`'s `filled` both use - rather than an
+    independently-tuned `np.linspace` mapping that isn't guaranteed to agree.
+    """
+    total, n_segments = 7, 20
+    item_status = (np.arange(total, dtype=np.uint8) % 2)  # alternating 0/1
+    colors = TqdmTag._get_colors(
+        n_segments=n_segments,
+        item_status=item_status,
+        status_to_tag={0: "default", 1: "warn"},
+        tag_to_color={"default": None, "warn": "yellow"},
+        default_status=0,
+    )
+    edges = (np.arange(n_segments) * total) // n_segments
+    expected = ["yellow" if item_status[e] else None for e in edges]
+    assert colors == expected
+
+
+def test_get_colors_sparse_branch_last_item_reaches_last_segment():
+    """Tagging the final item (100% complete) must colour the final bar
+    segment - the sparse-branch analogue of the dense-branch boundary
+    check, verifying the last item is never displaced off the bar's edge.
+    """
+    total, n_segments = 10, 20
+    item_status = np.zeros(total, dtype=np.uint8)
+    item_status[-1] = 1
+    colors = TqdmTag._get_colors(
+        n_segments=n_segments,
+        item_status=item_status,
+        status_to_tag={0: "default", 1: "warn"},
+        tag_to_color={"default": None, "warn": "yellow"},
+        default_status=0,
+    )
+    assert colors[-1] == "yellow"
+
+
 # ---------------------------------------------------------------------------
 # ColoredBar rendering
 # ---------------------------------------------------------------------------
