@@ -561,21 +561,15 @@ class TqdmTag(tqdm):
                 f"{n_fmt}{unit} [{elapsed_str}, {rate_fmt}{postfix}]"
             )
 
-    def _format_legend(self):
-        """Build the legend line shown below the bar.
-
-        Uses `legend_format` if one was supplied, otherwise renders one
-        colored swatch and count per tag that has been used at least
-        once, ordered by the tag's status value.
+    def _default_legend(self):
+        """Render one colored swatch and count per tag, status-ordered.
 
         Returns
         -------
         str
-            The formatted legend line.
+            The default swatch-based legend content, with no surrounding
+            formatting applied.
         """
-        if self._legend_format is not None:
-            return self._legend_format(self._tag_counts, self.tag_to_color)
-
         parts = []
         _tmp = ColoredBar(0, 1)
         swatch_char = "#" if self.ascii else "■"
@@ -591,6 +585,27 @@ class TqdmTag(tqdm):
                 swatch = f"{ansi}{swatch_char}{ColoredBar.COLOUR_RESET}"
             parts.append(f"{swatch} {tag_name}: {count}")
         return "   ".join(parts)
+
+    def _format_legend(self):
+        """Build the legend line shown below the bar.
+
+        `legend_format` controls the result: a callable is invoked as
+        `legend_format(tag_counts, tag_to_color) -> str` for full control;
+        a `str` is treated as a template and formatted with a single
+        `{legend}` placeholder holding the default swatch rendering (e.g.
+        `"tags: {legend}"`); `None` (the default) uses the default swatch
+        rendering as-is.
+
+        Returns
+        -------
+        str
+            The formatted legend line.
+        """
+        if callable(self._legend_format):
+            return self._legend_format(self._tag_counts, self.tag_to_color)
+        if isinstance(self._legend_format, str):
+            return self._legend_format.format(legend=self._default_legend())
+        return self._default_legend()
 
     def display(self, msg=None, pos=None):
         """Render the bar, then print the legend line beneath it if enabled.
@@ -626,10 +641,15 @@ class TqdmTag(tqdm):
 
         Overrides `tqdm.close`.
         """
+        # tqdm.close() is idempotent (guarded by self.disable); mirror that
+        # guard here so a redundant close (e.g. via __del__ once the last
+        # reference to this bar is dropped) doesn't write a second stray
+        # newline into whatever's rendering next on the same stream
+        already_closed = self.disable
         super().close()
         # super().close() ends with \n that lands the cursor on the legend line;
         # write one more \n so subsequent output starts below the legend
-        if self._legend_active:
+        if not already_closed and self._legend_active:
             self.fp.write("\n")
             self.fp.flush()
 
