@@ -148,31 +148,37 @@ class TqdmTag(tqdm):
     def __iter__(self):
         """Iterate over the wrapped iterable, resetting each item's status.
 
-        Before yielding each item, its status is set to `default_status`
-        so that a fresh item that isn't explicitly `tag()`-ed still
-        renders with the default color.
+        Before yielding each item, `_current_item_idx` is set and its status
+        is reset to `default_status`, so a fresh item that isn't explicitly
+        `tag()`-ed still renders with the default color. `_current_item_idx`
+        is kept as its own counter - distinct from `self.n` - since it must
+        always be exactly the 0-based position of the item currently being
+        tagged, regardless of `self.n`'s own semantics (which can start at a
+        non-zero `initial`, be mutated by user code, or lag behind `n` for
+        display-throttling reasons).
 
-        Manages `self.n` via explicit `update()` calls (rather than
-        delegating to `tqdm.__iter__`'s generator) so that breaking out of
-        the loop right after tagging the current item still counts it:
-        `tqdm.__iter__` only advances `n` in code positioned *after* its
-        `yield`, which a `break` skips entirely (Python throws
-        `GeneratorExit` at the suspended `yield`) - leaving the just-tagged
-        item's colored segment past the render boundary and invisible on
-        the final bar, even though its status was already recorded.
+        Drives `self.iterable` directly and manages `self.n` via explicit
+        `update()` calls, rather than delegating to `tqdm.__iter__`'s
+        generator, so that breaking out of the loop right after tagging the
+        current item still counts it. `tqdm.__iter__` only advances `n` in
+        code positioned *after* its own `yield`, which a `break` skips
+        entirely (Python throws `GeneratorExit` at the suspended `yield`);
+        worse, its `finally` unconditionally does `self.n = n`, overwriting
+        `self.n` with that stale, un-incremented count on close - so even
+        wrapping `super().__iter__()` and patching `self.n` up afterwards
+        would just get clobbered. Owning the `try`/`finally` around our own
+        `yield` and calling `update(1)` unconditionally - on normal
+        resumption and on early `break` alike - avoids that entirely and
+        keeps the just-tagged item's colored segment visible on the final
+        bar.
         """
         try:
             for i, item in enumerate(self.iterable):
-                # record status for this iteration as default
-                self._set_status(i, self.default_status)
                 self._current_item_idx = i
-
+                self._set_status(i, self.default_status)
                 try:
-                    # yield the actual item
                     yield item
                 finally:
-                    # runs on normal resumption *and* on an early `break`
-                    # (via GeneratorExit), so `n` always reflects this item
                     self.update(1)
         finally:
             self.close()
