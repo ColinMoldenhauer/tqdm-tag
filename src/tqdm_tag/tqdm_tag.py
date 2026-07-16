@@ -114,8 +114,12 @@ class TqdmTag(tqdm):
         # initialize the status for each iterable item
         # needs to be set before super().__init__ because it calls overridden format_dict()
         if total is not None:
-            # number of iterable items known -> preallocate
-            self._item_status = np.zeros(total, dtype=np.uint8)
+            # number of iterable items known -> preallocate, filled with
+            # default_status so items in an `initial` prefix (never written
+            # to by __iter__, since it starts enumerating at `initial`)
+            # render as "untagged" rather than whatever status happens to be 0
+            # TODO: need option to re-initalize status for "initial" items
+            self._item_status = np.full(total, default_status, dtype=np.uint8)
         else:
             # number unknown -> use python's dynamic sized list
             self._item_status = []
@@ -175,7 +179,13 @@ class TqdmTag(tqdm):
         """
         self._iterating = True
         try:
-            for i, item in enumerate(self.iterable):
+            # start=self.initial so items are tagged at their absolute position
+            # (matching preallocated `_item_status`) rather than a 0-based
+            # position within the remaining iterable, when resuming via `initial`.
+            # tqdm.__init__ returns early (without setting self.initial) when
+            # disable=True, so fall back to self.n, which it sets either way
+            initial = getattr(self, "initial", self.n)
+            for i, item in enumerate(self.iterable, start=initial):
                 self._current_item_idx = i
                 self._set_status(i, self.default_status)
                 try:
@@ -251,6 +261,12 @@ class TqdmTag(tqdm):
             if idx < len(self._item_status):
                 self._item_status[idx] = status
             else:
+                # pad any gap before idx (e.g. an `initial` prefix that was
+                # never iterated in this run) with default_status, so the
+                # list stays index-aligned with absolute item position
+                self._item_status.extend(
+                    [self.default_status] * (idx - len(self._item_status))
+                )
                 self._item_status.append(status)
 
     @staticmethod
