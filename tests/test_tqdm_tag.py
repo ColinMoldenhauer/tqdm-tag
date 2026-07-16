@@ -1,4 +1,6 @@
 import io
+import warnings
+
 import numpy as np
 import pytest
 from tqdm import TqdmWarning
@@ -56,6 +58,45 @@ def test_tag_with_tag_object():
             if i == 1:
                 pbar.tag(err)
     assert pbar._item_status[1] == 2
+
+
+def test_tag_status_out_of_uint8_range_warns():
+    out = io.StringIO()
+    big = Tag("big", status=300)
+    with pytest.warns(TqdmWarning, match="uint8"):
+        TqdmTag(range(3), tags=[big], file=out)
+
+
+def test_tag_call_status_out_of_uint8_range_warns():
+    # tag() both registers the new status (triggering the warning) and
+    # immediately writes it into the item array, which still overflows.
+    out = io.StringIO()
+    with TqdmTag(range(3), file=out) as pbar:
+        with pytest.raises(OverflowError):
+            with pytest.warns(TqdmWarning, match="uint8"):
+                pbar.tag("huge", status=1000)
+
+
+def test_tag_status_in_range_does_not_warn():
+    out = io.StringIO()
+    ok = Tag("ok", status=5)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", TqdmWarning)
+        TqdmTag(range(3), tags=[ok], file=out)
+
+
+def test_tag_status_out_of_range_no_total_does_not_warn():
+    """No preallocated uint8 array exists when `total` is unknown, so the
+    range restriction doesn't apply."""
+    out = io.StringIO()
+    def gen():
+        yield from range(3)
+    big = Tag("big", status=300)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", TqdmWarning)
+        with TqdmTag(gen(), tags=[big], file=out) as pbar:
+            for _ in pbar:
+                pass
 
 
 def test_unknown_total_uses_list():

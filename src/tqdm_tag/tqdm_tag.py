@@ -45,6 +45,12 @@ class Tag:
 
 class TqdmTag(tqdm):
 
+    # dtype backing the preallocated per-item status array (used when `total`
+    # is known); status values must fit within its range - see
+    # `_warn_if_status_out_of_range`.
+    _STATUS_DTYPE = np.uint8
+    _STATUS_DTYPE_INFO = np.iinfo(_STATUS_DTYPE)
+
     def __init__(
         self,
         iterable=None,
@@ -133,7 +139,7 @@ class TqdmTag(tqdm):
             # to by __iter__, since it starts enumerating at `initial`)
             # render as "untagged" rather than whatever status happens to be 0,
             # unless overwritten below by `initial_status`
-            self._item_status = np.full(total, default_status, dtype=np.uint8)
+            self._item_status = np.full(total, default_status, dtype=self._STATUS_DTYPE)
         else:
             # number unknown -> use python's dynamic sized list
             self._item_status = []
@@ -150,7 +156,9 @@ class TqdmTag(tqdm):
         if tags is not None:
             for t in tags:
                 next_status = max(self.tag_to_status.values()) + 1
-                self.tag_to_status[t.name] = t.status if t.status is not None else next_status
+                new_status = t.status if t.status is not None else next_status
+                self._warn_if_status_out_of_range(new_status)
+                self.tag_to_status[t.name] = new_status
                 if t.color is not None:
                     self.tag_to_color[t.name] = t.color
 
@@ -310,6 +318,7 @@ class TqdmTag(tqdm):
         # register new tag name on first use
         if tag not in self.tag_to_status:
             new_status = status if status is not None else max(self.tag_to_status.values()) + 1
+            self._warn_if_status_out_of_range(new_status)
             self.tag_to_status[tag] = new_status
             self.status_to_tag[new_status] = tag
 
@@ -323,6 +332,28 @@ class TqdmTag(tqdm):
 
         if manual_mode:
             self.update(1)
+
+    def _warn_if_status_out_of_range(self, status):
+        """Warn if `status` won't fit in the preallocated per-item status array.
+
+        When `total` is known, `_item_status` is a fixed `_STATUS_DTYPE`
+        numpy array (`uint8` by default) for memory efficiency; writing a
+        status outside its range raises `OverflowError` in `_set_status`.
+        Warn as soon as such a status is registered, rather than leaving the
+        user to debug a cryptic numpy error once the item is actually tagged.
+        """
+        if self.total is None:
+            return
+        dtype_info = self._STATUS_DTYPE_INFO
+        if not (dtype_info.min <= status <= dtype_info.max):
+            warnings.warn(
+                f"status {status} is outside the {self._STATUS_DTYPE.__name__} "
+                f"range ({dtype_info.min}-{dtype_info.max}) used to store "
+                "per-item status when `total` is known; tagging an item "
+                "with it will raise an OverflowError",
+                TqdmWarning,
+                stacklevel=3,
+            )
 
     # helper function for coloring functionality
     def _set_status(self, idx, status):
