@@ -414,6 +414,13 @@ class TqdmTag(tqdm):
         if color != "none":
             self.tag_to_color[tag] = color
 
+        if self._legend:
+            prev_status = self._get_status(i)
+            if prev_status is not None:
+                prev_tag = self.status_to_tag.get(int(prev_status))
+                if prev_tag in self._tag_counts:
+                    self._tag_counts[prev_tag] = max(self._tag_counts[prev_tag] - 1, 0)
+
         self._set_status(i, self.tag_to_status[tag])
 
         if self._legend and tag != self.default_tag_name:

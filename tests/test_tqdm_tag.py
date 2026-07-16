@@ -212,6 +212,45 @@ def test_tag_index_manual_mode_without_total():
         assert pbar._item_status == [0, 0, 0, 0, 0, 1]
 
 
+def test_tag_index_retag_updates_legend_counts():
+    """Retagging a slot via `index=` must move its legend count from the
+    old tag to the new one, not leave a stale increment behind
+    (regression for the legend-count-drift bug)."""
+    out = io.StringIO()
+    pool = Tag("pool", color="magenta", status=1)
+    with TqdmTag(
+        total=3,
+        tags=[pool],
+        default_tag_name="success",
+        legend=True,
+        legend_show_default=True,
+        file=out,
+    ) as pbar:
+        pbar.tag("pool", index=0)
+        pbar.tag("success", index=0)
+        pbar.update(1)
+        pbar.tag("success", index=1)
+        pbar.update(1)
+        pbar.tag("success", index=2)
+        pbar.update(1)
+
+    assert pbar._tag_counts == {"pool": 0}
+    assert pbar._legend_tag_counts() == {"success": 3, "pool": 0}
+
+
+def test_tag_index_retag_to_default_decrements_old_tag():
+    """Retagging a slot back to the implicit default tag must still
+    decrement whatever non-default tag previously held it."""
+    out = io.StringIO()
+    warn = Tag("warn", color="yellow", status=1)
+    with TqdmTag(total=2, tags=[warn], legend=True, file=out) as pbar:
+        pbar.tag("warn", index=0)
+        assert pbar._tag_counts == {"warn": 1}
+
+        pbar.tag("default", index=0)
+        assert pbar._tag_counts == {"warn": 0}
+
+
 def test_iter_guard_preserves_out_of_order_tag_without_total():
     """Same collision as `test_iter_guard_preserves_out_of_order_tag`, but
     with `total` unknown (`_item_status` is a list, not a numpy array)."""
