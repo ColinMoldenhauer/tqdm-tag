@@ -142,6 +142,7 @@ class TqdmTag(tqdm):
         # from the start, rather than only appearing once a tag is first used
         self._tag_counts = {name: 0 for name in self.tag_to_status if name != "default"}
         self._legend_active = False  # tracks whether a legend line has been written
+        self._iterating = False  # set by __iter__; tag() uses this to detect manual (non-iterable) usage
 
         super().__init__(iterable=iterable, total=total, colour=colour, **kwargs)
 
@@ -172,6 +173,7 @@ class TqdmTag(tqdm):
         keeps the just-tagged item's colored segment visible on the final
         bar.
         """
+        self._iterating = True
         try:
             for i, item in enumerate(self.iterable):
                 self._current_item_idx = i
@@ -181,11 +183,21 @@ class TqdmTag(tqdm):
                 finally:
                     self.update(1)
         finally:
+            self._iterating = False
             self.close()
 
     # main API
     def tag(self, tag, color="none", status=None):
         """Record the current item's status.
+
+        In manual (non-iterable) usage - i.e. no `for x in pbar` loop driving
+        `__iter__` - there's no notion of a "current item" for `tag()` to
+        target, and nothing that would otherwise advance the bar. `tag()`
+        falls back to `self.n` (which, absent an `__iter__`-driven counter,
+        correctly identifies the item about to complete) and calls
+        `update(1)` itself, so calling `tag()` alone both records the status
+        and advances the bar by one - do not also call `.update()` yourself
+        for that same item, or it will be counted twice.
 
         Parameters
         ----------
@@ -206,7 +218,8 @@ class TqdmTag(tqdm):
                 status = tag.status
             tag = tag.name
 
-        i = self._current_item_idx
+        manual_mode = not self._iterating
+        i = self.n if manual_mode else self._current_item_idx
 
         # register new tag name on first use
         if tag not in self.tag_to_status:
@@ -221,6 +234,9 @@ class TqdmTag(tqdm):
 
         if self._legend and tag != "default":
             self._tag_counts[tag] = self._tag_counts.get(tag, 0) + 1
+
+        if manual_mode:
+            self.update(1)
 
     # helper function for coloring functionality
     def _set_status(self, idx, status):
