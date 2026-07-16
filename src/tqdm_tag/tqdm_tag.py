@@ -52,6 +52,7 @@ class TqdmTag(tqdm):
         colour=None,
         default_status=0,
         tags=None,
+        initial_status=None,
         reduce_op=max,
         reduce_ignore_default=False,
         legend=False,
@@ -80,6 +81,19 @@ class TqdmTag(tqdm):
         tags : list of Tag, optional
             Tags to pre-register, in addition to the implicit `"default"`
             tag. Tags used for the first time via `tag()` are auto-registered.
+        initial_status : dict, array-like, or None, optional
+            Restores per-item status for a resumed run (paired with
+            `initial`), so a bar started mid-way still shows accurate
+            history for the items it didn't itself iterate. Values are raw
+            status ints (as in `Tag.status`/`tag_to_status`, not tag names)
+            and must already be registered - via `tags` - before use here.
+            Accepts:
+              - a `dict` of `{index: status}`, for a sparse subset of items;
+              - a 2D array-like of shape `(2, N)`: row 0 is indices, row 1
+                is the matching statuses, also for a sparse subset;
+              - a 1D array-like of shape `(total,)`, giving every item's
+                status directly (requires `total` to be known).
+            Defaults to `None` (every item starts at `default_status`).
         reduce_op : callable, optional
             Reduction applied to the statuses within a bar segment to pick
             the status (and therefore color) representing that segment
@@ -117,12 +131,16 @@ class TqdmTag(tqdm):
             # number of iterable items known -> preallocate, filled with
             # default_status so items in an `initial` prefix (never written
             # to by __iter__, since it starts enumerating at `initial`)
-            # render as "untagged" rather than whatever status happens to be 0
-            # TODO: need option to re-initalize status for "initial" items
+            # render as "untagged" rather than whatever status happens to be 0,
+            # unless overwritten below by `initial_status`
             self._item_status = np.full(total, default_status, dtype=np.uint8)
         else:
             # number unknown -> use python's dynamic sized list
             self._item_status = []
+        # set early (super().__init__ will set it again to the same value)
+        # so _set_status - used by _apply_initial_status below - can already
+        # tell preallocated-array from dynamic-list mode
+        self.total = total
 
         # build tag mappings from the tags list
         self.default_status = default_status
@@ -148,7 +166,65 @@ class TqdmTag(tqdm):
         self._legend_active = False  # tracks whether a legend line has been written
         self._iterating = False  # set by __iter__; tag() uses this to detect manual (non-iterable) usage
 
+        # apply before super().__init__(), which - unless disable=True - ends by
+        # calling self.refresh() itself; seeding _item_status/_tag_counts after
+        # that point would leave the very first rendered frame uncolored until
+        # the next refresh
+        self._apply_initial_status(initial_status)
+
         super().__init__(iterable=iterable, total=total, colour=colour, **kwargs)
+
+    def _resolve_initial_status_pairs(self, initial_status):
+        """Normalize `initial_status` into a list of `(index, status)` pairs.
+
+        Accepts a `dict`, a sparse `(2, N)` array-like (indices, statuses),
+        or a dense `(total,)` array-like - see `__init__`'s docstring.
+        """
+        if isinstance(initial_status, dict):
+            return list(initial_status.items())
+
+        arr = np.asarray(initial_status)
+        if arr.ndim == 2:
+            if arr.shape[0] != 2:
+                raise ValueError(
+                    "initial_status as a 2D array must have shape (2, N): "
+                    f"row 0 = indices, row 1 = statuses; got shape {arr.shape}"
+                )
+            return list(zip(arr[0].tolist(), arr[1].tolist()))
+        if arr.ndim == 1:
+            if self.total is not None and len(arr) != self.total:
+                raise ValueError(
+                    "initial_status as a 1D array must have length total "
+                    f"({self.total}); got length {len(arr)}. Use a dict or "
+                    "a (2, N) array instead to set a subset of items."
+                )
+            return list(enumerate(arr.tolist()))
+        raise ValueError(
+            "initial_status must be a dict, or a 1D/2D array-like; got "
+            f"an array with ndim={arr.ndim}"
+        )
+
+    def _apply_initial_status(self, initial_status):
+        """Seed `_item_status` (and the legend's tag counts) from `initial_status`."""
+        if initial_status is None:
+            return
+
+        pairs = self._resolve_initial_status_pairs(initial_status)
+
+        # validate every entry before writing any of them, so a bad entry
+        # doesn't leave `_item_status` partially updated
+        for idx, status in pairs:
+            if status not in self.status_to_tag:
+                raise ValueError(
+                    f"initial_status references unknown status {status!r} "
+                    f"at index {idx}; register it first via the `tags` argument"
+                )
+
+        for idx, status in pairs:
+            self._set_status(idx, status)
+            tag_name = self.status_to_tag[status]
+            if self._legend and tag_name != "default":
+                self._tag_counts[tag_name] = self._tag_counts.get(tag_name, 0) + 1
 
     def __iter__(self):
         """Iterate over the wrapped iterable, resetting each item's status.
