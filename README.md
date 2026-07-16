@@ -14,6 +14,8 @@
 
 **tqdm-tag** extends [tqdm](https://tqdm.github.io/) so you can call `pbar.warn()` or `pbar.error()` on any item inside your loop. The corresponding segment of the progress bar fills with that tag's color, giving you an at-a-glance overview of where issues occurred — without waiting for the loop to finish.
 
+A `tqdm` bar is often used to replace per-item print statements, which cuts down on clutter but throws away per-item outcomes. tqdm-tag keeps that information by encoding it as color in the bar itself.
+
 ---
 
 ![demo](docs/assets/demo.svg)
