@@ -85,6 +85,30 @@ for i in pbar:
     if i == 80: pbar.tag(Tag("error", color="red"))
 ```
 
+### Manual mode (no iterable)
+
+Skip the `for` loop and drive the bar yourself — `.tag()` calls `update(1)` internally, so no separate `.update()` call is needed:
+
+```python
+from tqdm_tag import TqdmErrorTag
+
+pbar = TqdmErrorTag(total=100)
+for future in as_completed(futures):
+    if future.result().ok:
+        pbar.tag("default")
+    else:
+        pbar.error()
+```
+
+For out-of-order completions where a specific item's slot matters (e.g. retries, or `as_completed` where you know each future's original index), pass `index=` instead of relying on completion order:
+
+```python
+if future.result().ok:
+    pbar.tag("default", index=future_to_index[future])
+else:
+    pbar.error(index=future_to_index[future])
+```
+
 ### Turn the whole bar green on success
 
 ```python
