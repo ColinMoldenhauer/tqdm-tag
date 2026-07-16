@@ -1036,6 +1036,13 @@ class TqdmTag(tqdm):
         to the bar's line afterward so subsequent bar updates overwrite
         in place.
 
+        `msg=""` is the sentinel `tqdm.close` (with `leave=False`) uses to
+        blank the bar's line instead of redrawing it - handled the same way
+        here (blank the legend line rather than redraw it), otherwise a
+        `leave=False` bar would still leave its legend behind. See
+        `_render_legend_line` for the shared blank-or-draw logic also used
+        by `clear()`.
+
         Parameters
         ----------
         msg : str, optional
@@ -1048,14 +1055,71 @@ class TqdmTag(tqdm):
             return
         if not getattr(self.fp, "isatty", lambda: False)():
             return
-        legend = self._format_legend()
-        if not legend:
-            return
+        self._render_legend_line(self.pos if pos is None else pos, msg)
+
+    def _render_legend_line(self, pos, msg):
+        """Draw, or blank, this bar's legend line and return the cursor.
+
+        The legend is drawn one row below this bar's own row (`pos`, in the
+        same relative-line sense as `tqdm`'s `position=`) using `moveto` -
+        the same primitive `tqdm` itself uses for `position=`-based
+        multi-bar stacks - so multiple simultaneously-live `TqdmTag` bars
+        each land their legend under their own bar rather than all
+        clustering under the topmost one. The cursor is returned to the
+        shared reference row afterward, matching how `tqdm.display`/`clear`
+        leave it.
+
+        `msg=""` - the sentinel used by `tqdm.close(leave=False)` and by
+        `clear()` - blanks the legend line instead of drawing it, so
+        clearing the bar (a full redraw, or `tqdm.write()`, which clears
+        every live bar before printing and redraws them after) doesn't
+        leave stale legend text sitting on its own, orphaned row.
+
+        Parameters
+        ----------
+        pos : int
+            This bar's row offset from the shared reference row.
+        msg : str or None
+            `""` to blank the line; anything else draws the current legend.
+        """
+        if msg == "":
+            if not self._legend_active:
+                return
+            content = ""
+        else:
+            content = self._format_legend()
+            if not content:
+                return
         width = self.ncols or 80
-        # move to legend line, write (padded to clear old content), return to bar line
-        self.fp.write(f"\n{legend:<{width}}\x1b[A\r")
+        line_pos = abs(pos) + 1
+        self.moveto(line_pos)
+        self.fp.write(f"\r{content:<{width}}\r")
+        self.moveto(-line_pos)
         self.fp.flush()
-        self._legend_active = True
+        self._legend_active = bool(content)
+
+    def clear(self, nolock=False):
+        """Clear the bar, then blank this bar's legend line too, if drawn.
+
+        Overrides `tqdm.clear`. `tqdm.write()` clears every live bar (via
+        this method) before printing, then redraws them - without this
+        override, the legend line (drawn outside of `tqdm`'s own
+        line-tracking by `display()`) would survive that clear, causing the
+        redraw to land one row off and leave a stale legend line behind on
+        every `tqdm.write()` call.
+
+        Parameters
+        ----------
+        nolock : bool, optional
+            If `True`, skip acquiring the internal lock, same as in
+            `tqdm.clear` (used when the caller already holds it).
+        """
+        super().clear(nolock=nolock)
+        if self.disable or not self._legend or not self._legend_active:
+            return
+        if not getattr(self.fp, "isatty", lambda: False)():
+            return
+        self._render_legend_line(self.pos, "")
 
     def close(self):
         """Close the bar, then move past the legend line if one was drawn.

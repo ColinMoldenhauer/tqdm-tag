@@ -1,10 +1,67 @@
 import io
+import re
 import warnings
 
 import numpy as np
 import pytest
 from tqdm import TqdmWarning
 from tqdm_tag import Tag, TqdmTag, TqdmErrorTag, ColoredBar
+
+
+class FakeTTY(io.StringIO):
+    """A `StringIO` that reports `isatty() == True`, so the legend's
+    TTY-only rendering path (see `TqdmTag.display`) actually runs -
+    plain `io.StringIO` makes `isatty()` return `False`, silently
+    skipping that path in every other test in this file."""
+
+    def isatty(self):
+        return True
+
+
+def render_screen(raw):
+    """Replay a raw ANSI/carriage-return stream into the final visible
+    terminal lines it would leave behind - `\\r`, `\\n` (with the CRLF
+    translation real cooked-mode TTYs apply, which is what `TqdmTag` and
+    `tqdm` itself assume) and cursor-up (`ESC[A`) are interpreted; other
+    escape codes (colour, etc.) are stripped. Needed because a raw
+    substring check (e.g. `"ok:" in out.getvalue()`) sees every
+    intermediate frame ever written, not just what's left on screen."""
+    lines = [""]
+    row = col = 0
+
+    def put(ch):
+        nonlocal col
+        line = lines[row]
+        if len(line) < col:
+            line = line + " " * (col - len(line))
+        line = line[:col] + ch + line[col + 1:]
+        lines[row] = line
+        col += 1
+
+    i = 0
+    while i < len(raw):
+        c = raw[i]
+        if c == "\x1b":
+            m = re.match(r"\x1b\[(\d*)([A-Za-z])", raw[i:])
+            if m:
+                if m.group(2) == "A":
+                    row = max(0, row - (int(m.group(1)) if m.group(1) else 1))
+                i += m.end()
+                continue
+            i += 1
+        elif c == "\r":
+            col = 0
+            i += 1
+        elif c == "\n":
+            row += 1
+            col = 0
+            while len(lines) <= row:
+                lines.append("")
+            i += 1
+        else:
+            put(c)
+            i += 1
+    return lines
 
 
 # ---------------------------------------------------------------------------
@@ -339,6 +396,54 @@ def test_prune_legend_with_show_default_hides_zero_default():
         pbar.tag("warn", index=1)  # first touch of slot 1 -> counts it
         assert pbar.n == 2
         assert pbar._legend_tag_counts() == {"warn": 2}
+
+
+def test_legend_not_left_behind_when_leave_false():
+    """`leave=False` must erase the bar *and* its legend line - `tqdm`'s own
+    `close()` blanks the bar line via `display(msg="")`, but previously
+    `TqdmTag.display` redrew the legend unconditionally even on that
+    clearing call, leaving stray legend text on screen after close()."""
+    out = FakeTTY()
+    with TqdmTag(range(3), file=out, legend=True, leave=False, mininterval=0) as pbar:
+        for _ in pbar:
+            pbar.tag("ok", color="green")
+    screen = render_screen(out.getvalue())
+    assert not any("ok:" in line for line in screen)
+
+
+def test_clear_also_clears_legend_line():
+    """`clear()` (called directly, or by `tqdm.write()` on every live bar
+    before it prints) must blank the legend line along with the bar -
+    `TqdmTag` didn't override `clear()` at all previously, so the legend
+    line (drawn outside tqdm's own line-tracking, in `display()`) survived
+    a `clear()` call untouched, left dangling below a blanked bar line."""
+    out = FakeTTY()
+    pbar = TqdmTag(range(3), file=out, legend=True, mininterval=0)
+    pbar.tag("ok", color="green", index=0)
+    pbar.refresh()
+    assert any("ok: 1" in line for line in render_screen(out.getvalue()))
+
+    pbar.clear()
+    screen = render_screen(out.getvalue())
+    assert not any("ok:" in line for line in screen)
+    assert not any(line.strip() for line in screen)
+    pbar.close()
+
+
+def test_legend_survives_tqdm_write_clear():
+    """`tqdm.write()` clears every live bar via `clear()` before printing
+    and redraws afterward; without the `clear()` override above, this used
+    to leave a stale legend line whose position drifted with every call."""
+    out = FakeTTY()
+    with TqdmTag(range(3), file=out, legend=True, mininterval=0) as pbar:
+        for i in pbar:
+            pbar.tag("ok", color="green")
+            if i == 0:
+                TqdmTag.write("hello from write()", file=out)
+    screen = render_screen(out.getvalue())
+    assert any("hello from write()" in line for line in screen)
+    assert any("100%" in line and "3/3" in line for line in screen)
+    assert sum("ok: 3" in line for line in screen) == 1
 
 
 def test_iter_guard_preserves_out_of_order_tag_without_total():
