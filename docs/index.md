@@ -77,6 +77,9 @@ for i in pbar:
     if i == 80: pbar.tag("error")
 ```
 
+!!! note
+    When `total` is known, per-item status is stored in a fixed `uint8` array (0-255) for memory efficiency, so at most 256 distinct status values are available. Registering a `Tag` (or calling `.tag()`) with a `status` outside that range raises a warning at registration time, ahead of the `OverflowError` it would otherwise cause once an item is actually tagged with it.
+
 ### Add tags dynamically
 
 Pass a `Tag` object to `.tag()` to register and apply a new tag in one call. Subsequent calls can use the name string:
@@ -114,6 +117,21 @@ def my_legend(counts, colors):
     return "  ".join(f"[{k.upper()}={v}]" for k, v in counts.items())
 
 pbar = TqdmErrorTag(range(100), legend=True, legend_format=my_legend)
+```
+
+Every item starts out under the implicit `"default"` tag. Rename it with `default_tag_name` (e.g. if `"default"` collides with one of your own tag names), and show its running count in the legend with `legend_show_default`:
+
+```python
+pbar = TqdmTag(
+    range(100),
+    tags=[Tag("warn", color="yellow")],
+    default_tag_name="pending",
+    legend=True,
+    legend_show_default=True,  # legend now includes "pending: N"
+)
+for i in pbar:
+    if i == 10: pbar.tag("warn")
+    if i == 90: pbar.tag("pending", color="green")  # re-color the default tag
 ```
 
 ### Reduce operation for dense bars

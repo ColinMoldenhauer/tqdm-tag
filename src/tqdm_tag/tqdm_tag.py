@@ -57,12 +57,14 @@ class TqdmTag(tqdm):
         total=None,
         colour=None,
         default_status=0,
+        default_tag_name="default",
         tags=None,
         initial_status=None,
         reduce_op=max,
         reduce_ignore_default=False,
         legend=False,
         legend_format=None,
+        legend_show_default=False,
         **kwargs,
     ):
         """A `tqdm` progress bar whose segments are colored by per-item tags.
@@ -84,9 +86,16 @@ class TqdmTag(tqdm):
         default_status : int, optional
             Status value assigned to every item before `tag()` is called
             on it (default `0`).
+        default_tag_name : str, optional
+            Name of the implicit tag representing `default_status`, used
+            as its key in `tag_to_status`/`tag_to_color` and its label in
+            the legend (default `"default"`). Change this if `"default"`
+            collides with a tag name you want to use, or to give the
+            untagged state a more descriptive label.
         tags : list of Tag, optional
-            Tags to pre-register, in addition to the implicit `"default"`
-            tag. Tags used for the first time via `tag()` are auto-registered.
+            Tags to pre-register, in addition to the implicit
+            `default_tag_name` tag. Tags used for the first time via
+            `tag()` are auto-registered.
         initial_status : dict, array-like, or None, optional
             Restores per-item status for a resumed run (paired with
             `initial`), so a bar started mid-way still shows accurate
@@ -117,6 +126,11 @@ class TqdmTag(tqdm):
             A `str` is used as a template with a `{legend}` placeholder for
             the default swatch rendering (e.g. `"tags: {legend}"`). Defaults
             (`None`) to the built-in colored swatch format, unchanged.
+        legend_show_default : bool, optional
+            If `True`, include `default_tag_name` in the legend, with its
+            count derived as processed items minus the sum of all other
+            tag counts (default `False`, matching the previous behavior of
+            never showing it).
         **kwargs
             Forwarded to `tqdm.__init__`.
         """
@@ -150,8 +164,9 @@ class TqdmTag(tqdm):
 
         # build tag mappings from the tags list
         self.default_status = default_status
-        self.tag_to_status = {"default": default_status}
-        self.tag_to_color = {"default": colour}
+        self.default_tag_name = default_tag_name
+        self.tag_to_status = {default_tag_name: default_status}
+        self.tag_to_color = {default_tag_name: colour}
 
         if tags is not None:
             for t in tags:
@@ -168,9 +183,10 @@ class TqdmTag(tqdm):
         self.reduce_ignore_default = reduce_ignore_default
         self._legend = legend
         self._legend_format = legend_format
+        self._legend_show_default = legend_show_default
         # pre-registered tags start at count 0 so the legend is visible
         # from the start, rather than only appearing once a tag is first used
-        self._tag_counts = {name: 0 for name in self.tag_to_status if name != "default"}
+        self._tag_counts = {name: 0 for name in self.tag_to_status if name != default_tag_name}
         self._legend_active = False  # tracks whether a legend line has been written
         self._iterating = False  # set by __iter__; tag() uses this to detect manual (non-iterable) usage
 
@@ -231,7 +247,7 @@ class TqdmTag(tqdm):
         for idx, status in pairs:
             self._set_status(idx, status)
             tag_name = self.status_to_tag[status]
-            if self._legend and tag_name != "default":
+            if self._legend and tag_name != self.default_tag_name:
                 self._tag_counts[tag_name] = self._tag_counts.get(tag_name, 0) + 1
 
     def __iter__(self):
@@ -327,7 +343,7 @@ class TqdmTag(tqdm):
 
         self._set_status(i, self.tag_to_status[tag])
 
-        if self._legend and tag != "default":
+        if self._legend and tag != self.default_tag_name:
             self._tag_counts[tag] = self._tag_counts.get(tag, 0) + 1
 
         if manual_mode:
@@ -726,6 +742,27 @@ class TqdmTag(tqdm):
                 f"{n_fmt}{unit} [{elapsed_str}, {rate_fmt}{postfix}]"
             )
 
+    def _legend_tag_counts(self):
+        """Return the tag counts to render in the legend.
+
+        `self._tag_counts` never tracks `default_tag_name` directly - items
+        are only counted there when explicitly `tag()`-ed (or seeded via
+        `initial_status`) with a non-default tag. When `legend_show_default`
+        is enabled, the default tag's count is derived instead of tracked:
+        every processed item (`self.n`) that isn't accounted for by another
+        tag's count must still be at `default_status`.
+
+        Returns
+        -------
+        dict
+            `self._tag_counts`, plus `default_tag_name` mapped to its
+            derived count if `legend_show_default` is enabled.
+        """
+        if not self._legend_show_default:
+            return self._tag_counts
+        default_count = max(self.n - sum(self._tag_counts.values()), 0)
+        return {self.default_tag_name: default_count, **self._tag_counts}
+
     def _default_legend(self):
         """Render one colored swatch and count per tag, status-ordered.
 
@@ -739,7 +776,7 @@ class TqdmTag(tqdm):
         _tmp = ColoredBar(0, 1)
         swatch_char = "#" if self.ascii else "■"
         sorted_tags = sorted(
-            self._tag_counts.items(),
+            self._legend_tag_counts().items(),
             key=lambda kv: self.tag_to_status.get(kv[0], 0),
         )
         for tag_name, count in sorted_tags:
@@ -767,7 +804,7 @@ class TqdmTag(tqdm):
             The formatted legend line.
         """
         if callable(self._legend_format):
-            return self._legend_format(self._tag_counts, self.tag_to_color)
+            return self._legend_format(self._legend_tag_counts(), self.tag_to_color)
         if isinstance(self._legend_format, str):
             return self._legend_format.format(legend=self._default_legend())
         return self._default_legend()
