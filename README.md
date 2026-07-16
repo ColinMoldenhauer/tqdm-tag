@@ -123,6 +123,17 @@ for i in pbar:
     if i == 90: pbar.tag("pending", color="green")  # re-color the default tag
 ```
 
+Registered tags show up in the legend with a count of `0` until first used. Pass `prune_legend=True` to hide them until then:
+
+```python
+pbar = TqdmTag(
+    range(100),
+    tags=[Tag("warn", color="yellow"), Tag("error", color="red")],
+    legend=True,
+    prune_legend=True,  # "warn"/"error" only appear once tagged at least once
+)
+```
+
 ### Reduce operation for dense bars
 
 When the terminal is narrow, multiple items share one bar segment. Use `reduce_op` to control which status wins, and `reduce_ignore_default` to skip untagged items:

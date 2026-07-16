@@ -251,6 +251,45 @@ def test_tag_index_retag_to_default_decrements_old_tag():
         assert pbar._tag_counts == {"warn": 0}
 
 
+def test_prune_legend_omits_zero_count_tags():
+    """`prune_legend=True` must drop tags with a count of 0 from the legend,
+    while leaving `_tag_counts` itself untouched."""
+    out = io.StringIO()
+    warn = Tag("warn", color="yellow", status=1)
+    error = Tag("error", color="red", status=2)
+    with TqdmTag(
+        total=2,
+        tags=[warn, error],
+        legend=True,
+        prune_legend=True,
+        file=out,
+    ) as pbar:
+        assert pbar._legend_tag_counts() == {}
+        pbar.tag("warn", index=0)
+        assert pbar._legend_tag_counts() == {"warn": 1}
+        assert pbar._tag_counts == {"warn": 1, "error": 0}
+
+
+def test_prune_legend_with_show_default_hides_zero_default():
+    """`prune_legend` combined with `legend_show_default` must hide the
+    derived default-tag count too, once it drops to 0."""
+    out = io.StringIO()
+    warn = Tag("warn", color="yellow", status=1)
+    with TqdmTag(
+        total=2,
+        tags=[warn],
+        legend=True,
+        legend_show_default=True,
+        prune_legend=True,
+        file=out,
+    ) as pbar:
+        pbar.tag("warn", index=0)
+        pbar.update(1)
+        pbar.tag("warn", index=1)
+        pbar.update(1)
+        assert pbar._legend_tag_counts() == {"warn": 2}
+
+
 def test_iter_guard_preserves_out_of_order_tag_without_total():
     """Same collision as `test_iter_guard_preserves_out_of_order_tag`, but
     with `total` unknown (`_item_status` is a list, not a numpy array)."""

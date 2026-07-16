@@ -65,6 +65,7 @@ class TqdmTag(tqdm):
         legend=False,
         legend_format=None,
         legend_show_default=False,
+        prune_legend=False,
         **kwargs,
     ):
         """A `tqdm` progress bar whose segments are colored by per-item tags.
@@ -131,6 +132,10 @@ class TqdmTag(tqdm):
             count derived as processed items minus the sum of all other
             tag counts (default `False`, matching the previous behavior of
             never showing it).
+        prune_legend : bool, optional
+            If `True`, omit tags with a current count of `0` from the
+            legend (default `False`, showing every registered tag from
+            the start).
         **kwargs
             Forwarded to `tqdm.__init__`.
         """
@@ -184,6 +189,7 @@ class TqdmTag(tqdm):
         self._legend = legend
         self._legend_format = legend_format
         self._legend_show_default = legend_show_default
+        self._prune_legend = prune_legend
         # pre-registered tags start at count 0 so the legend is visible
         # from the start, rather than only appearing once a tag is first used
         self._tag_counts = {name: 0 for name in self.tag_to_status if name != default_tag_name}
@@ -887,12 +893,17 @@ class TqdmTag(tqdm):
         -------
         dict
             `self._tag_counts`, plus `default_tag_name` mapped to its
-            derived count if `legend_show_default` is enabled.
+            derived count if `legend_show_default` is enabled, with
+            zero-count tags omitted if `prune_legend` is enabled.
         """
         if not self._legend_show_default:
-            return self._tag_counts
-        default_count = max(self.n - sum(self._tag_counts.values()), 0)
-        return {self.default_tag_name: default_count, **self._tag_counts}
+            counts = dict(self._tag_counts)
+        else:
+            default_count = max(self.n - sum(self._tag_counts.values()), 0)
+            counts = {self.default_tag_name: default_count, **self._tag_counts}
+        if self._prune_legend:
+            counts = {name: count for name, count in counts.items() if count != 0}
+        return counts
 
     def _default_legend(self):
         """Render one colored swatch and count per tag, status-ordered.
