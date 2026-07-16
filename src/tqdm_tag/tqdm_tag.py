@@ -151,14 +151,31 @@ class TqdmTag(tqdm):
         Before yielding each item, its status is set to `default_status`
         so that a fresh item that isn't explicitly `tag()`-ed still
         renders with the default color.
-        """
-        for i, item in enumerate(super().__iter__()):
-            # record status for this iteration as default
-            self._set_status(i, self.default_status)
-            self._current_item_idx = i
 
-            # yield the actual item
-            yield item
+        Manages `self.n` via explicit `update()` calls (rather than
+        delegating to `tqdm.__iter__`'s generator) so that breaking out of
+        the loop right after tagging the current item still counts it:
+        `tqdm.__iter__` only advances `n` in code positioned *after* its
+        `yield`, which a `break` skips entirely (Python throws
+        `GeneratorExit` at the suspended `yield`) - leaving the just-tagged
+        item's colored segment past the render boundary and invisible on
+        the final bar, even though its status was already recorded.
+        """
+        try:
+            for i, item in enumerate(self.iterable):
+                # record status for this iteration as default
+                self._set_status(i, self.default_status)
+                self._current_item_idx = i
+
+                try:
+                    # yield the actual item
+                    yield item
+                finally:
+                    # runs on normal resumption *and* on an early `break`
+                    # (via GeneratorExit), so `n` always reflects this item
+                    self.update(1)
+        finally:
+            self.close()
 
     # main API
     def tag(self, tag, color="none", status=None):

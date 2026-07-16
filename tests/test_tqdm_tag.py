@@ -69,6 +69,30 @@ def test_unknown_total_uses_list():
     assert len(pbar._item_status) == 3
 
 
+def test_tag_then_break_still_counts_current_item():
+    """Tagging the current item and immediately `break`-ing out of the loop
+    must still advance `n` to include that item.
+
+    `tqdm.__iter__` (the base class's generator) only advances `n` in code
+    positioned *after* its `yield` - a `break` throws `GeneratorExit` at
+    that suspended `yield`, skipping the increment entirely, so the
+    just-tagged item's status was recorded but silently excluded from
+    `n`/`total` (and thus from the range `ColoredBar.__format__` actually
+    paints), even though the legend counter (updated independently in
+    `tag()`) correctly reflects it.
+    """
+    out = io.StringIO()
+    warn = Tag("warn", color="yellow", status=1)
+    pbar = TqdmTag(range(12), tags=[warn], file=out, mininterval=0, disable=False)
+    for i in pbar:
+        if i == 9:
+            pbar.tag("warn")
+            break
+
+    assert pbar.n == 10
+    assert pbar._item_status[9] == 1
+
+
 # ---------------------------------------------------------------------------
 # TqdmErrorTag convenience API
 # ---------------------------------------------------------------------------
