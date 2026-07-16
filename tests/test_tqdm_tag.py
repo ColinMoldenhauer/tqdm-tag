@@ -135,6 +135,102 @@ def test_tag_then_break_still_counts_current_item():
 
 
 # ---------------------------------------------------------------------------
+# tag(index=...) overrides
+# ---------------------------------------------------------------------------
+
+def test_tag_index_overwrites_manual_mode_without_advancing():
+    """Retry-style usage: an item first tagged "error" is later flipped to
+    "success" via `index=`, without double-counting it in `n`."""
+    out = io.StringIO()
+    tags = [Tag("success", color="green", status=1), Tag("error", color="red", status=2)]
+    with TqdmTag(total=3, tags=tags, file=out) as pbar:
+        pbar.tag("success")  # item 0
+        pbar.tag("error")    # item 1
+        assert pbar.n == 2
+        assert pbar._item_status[1] == 2
+
+        # retry item 1 succeeds - overwrite its status, `n` must not move
+        pbar.tag("success", index=1)
+        assert pbar.n == 2
+        assert pbar._item_status[1] == 1
+
+        pbar.tag("success")  # item 2
+    assert pbar.n == 3
+
+
+def test_tag_index_zero_is_respected():
+    """`index=0` must not be treated as falsy (regression for `index or ...`
+    style bugs)."""
+    out = io.StringIO()
+    warn = Tag("warn", color="yellow", status=1)
+    with TqdmTag(total=3, tags=[warn], file=out) as pbar:
+        pbar.tag("warn")             # item 0 -> warn, n=1
+        pbar.tag("default", index=0)  # overwrite item 0 back to default
+    assert pbar._item_status[0] == 0
+    assert pbar.n == 1
+
+
+def test_iter_guard_preserves_out_of_order_tag():
+    """Simulates an out-of-order iterable (e.g. `as_completed`): the loop's
+    own completion-order counter `i` eventually collides with a slot that
+    was already explicitly tagged via `index=`; the auto default-status
+    reset in `__iter__` must skip that slot rather than clobber it."""
+    out = io.StringIO()
+    warn = Tag("warn", color="yellow", status=1)
+    # completion order -> true index: 0->2, 1->0, 2->1
+    completion_order = [2, 0, 1]
+    with TqdmTag(range(3), tags=[warn], file=out, mininterval=0) as pbar:
+        for item, true_idx in zip(pbar, completion_order):
+            if true_idx == 2:
+                pbar.tag("warn", index=true_idx)
+    # true index 2 was tagged "warn" while completion-order i was 0; later,
+    # when the loop's own counter reaches i=2, its default-reset must not
+    # wipe out the explicitly-tagged status at slot 2
+    assert pbar._item_status[2] == 1
+
+
+def test_tag_index_manual_mode_without_total():
+    """`index=` overwrite/jump-ahead must also work when `total` is unknown
+    and `_item_status` is a plain growable list rather than a preallocated
+    array."""
+    out = io.StringIO()
+    warn = Tag("warn", color="yellow", status=1)
+    with TqdmTag(total=None, tags=[warn], file=out) as pbar:
+        pbar.tag("warn")     # item 0, n=1
+        pbar.tag("default")  # item 1, n=2
+        assert pbar.n == 2
+
+        # retry item 0 - overwrite without advancing n
+        pbar.tag("default", index=0)
+        assert pbar.n == 2
+        assert pbar._item_status[0] == 0
+
+        # jump ahead to a slot beyond the list's current length - must pad
+        # the gap with default_status rather than raise
+        pbar.tag("warn", index=5)
+        assert pbar.n == 2
+        assert pbar._item_status == [0, 0, 0, 0, 0, 1]
+
+
+def test_iter_guard_preserves_out_of_order_tag_without_total():
+    """Same collision as `test_iter_guard_preserves_out_of_order_tag`, but
+    with `total` unknown (`_item_status` is a list, not a numpy array)."""
+    out = io.StringIO()
+    warn = Tag("warn", color="yellow", status=1)
+
+    def gen():
+        yield from range(4)
+
+    completion_order = [2, 0, 1, 3]
+    with TqdmTag(gen(), tags=[warn], file=out, mininterval=0) as pbar:
+        for item, true_idx in zip(pbar, completion_order):
+            if true_idx == 2:
+                pbar.tag("warn", index=true_idx)
+    assert pbar._item_status[2] == 1
+    assert isinstance(pbar._item_status, list)
+
+
+# ---------------------------------------------------------------------------
 # TqdmErrorTag convenience API
 # ---------------------------------------------------------------------------
 

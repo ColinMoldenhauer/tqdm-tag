@@ -44,6 +44,7 @@ See the [API reference](api.md) for full class and method documentation.
 - **Status reduction** — configure how multiple tagged items within one bar segment are combined (`max`, `min`, or any callable).
 - **Custom legend** — `legend_format` accepts a callable for full control over the legend line.
 - **Resumable bars** — `initial` and `initial_status` pick a bar back up mid-run, restoring per-item tag history rather than starting the display from scratch.
+- **Retag by index** — `.tag(..., index=i)` overwrites a specific item's status without advancing the bar, for retry logic in manual mode or out-of-order iterables.
 
 ## Examples
 
@@ -174,3 +175,28 @@ for i in pbar:
 ```
 
 `initial_status` also accepts a sparse `(2, N)` array (`[indices, statuses]`) or a dense `(total,)` array giving every item's status directly.
+
+### Retag an item by index
+
+Pass `index` to `.tag()` to target a specific slot instead of the current item. `tag()` never auto-advances the bar when `index` is given, so it's safe to overwrite an already-counted item's status — the main use case is retry logic in manual (non-iterable) mode:
+
+```python
+from tqdm_tag import Tag, TqdmTag
+
+tags = [Tag("success", color="green", status=1), Tag("error", color="red", status=2)]
+pbar = TqdmTag(total=len(items), tags=tags)
+
+for i, item in enumerate(items):
+    try:
+        process(item)
+        pbar.tag("success")
+    except Exception:
+        pbar.tag("error")  # n advances either way
+
+# later: retry failed items, flip their status without touching n
+for i in failed_indices:
+    if retry(items[i]):
+        pbar.tag("success", index=i)
+```
+
+`index` also fits out-of-order iterables (e.g. `concurrent.futures.as_completed`), where the true slot for a completed item has to be looked up rather than assumed from completion order. Works whether or not `total` is known.

@@ -262,6 +262,17 @@ class TqdmTag(tqdm):
         non-zero `initial`, be mutated by user code, or lag behind `n` for
         display-throttling reasons).
 
+        The reset is skipped for a slot that already holds a non-default
+        status. This matters for out-of-order iterables (e.g.
+        `concurrent.futures.as_completed`), where `i` is completion order,
+        not the item's true position - the loop body tags the true slot via
+        `tag(..., index=true_idx)` instead of relying on `i`. Since `i` and
+        `true_idx` are drawn from the same `range(total)`, `i` will
+        eventually collide with some earlier item's `true_idx`; without the
+        guard, that coincidence would reset an already-tagged item back to
+        `default_status` for no reason related to the item at slot `i`
+        itself.
+
         Drives `self.iterable` directly and manages `self.n` via explicit
         `update()` calls, rather than delegating to `tqdm.__iter__`'s
         generator, so that breaking out of the loop right after tagging the
@@ -287,7 +298,9 @@ class TqdmTag(tqdm):
             initial = getattr(self, "initial", self.n)
             for i, item in enumerate(self.iterable, start=initial):
                 self._current_item_idx = i
-                self._set_status(i, self.default_status)
+                current = self._get_status(i)
+                if current is None or current == self.default_status:
+                    self._set_status(i, self.default_status)
                 try:
                     yield item
                 finally:
@@ -296,9 +309,44 @@ class TqdmTag(tqdm):
             self._iterating = False
             self.close()
 
+    def __iter__old(self):
+        """Iterate over the wrapped iterable, resetting each item's status.
+
+        Before yielding each item, its status is set to `default_status`
+        so that a fresh item that isn't explicitly `tag()`-ed still
+        renders with the default color.
+
+        Manages `self.n` via explicit `update()` calls (rather than
+        delegating to `tqdm.__iter__`'s generator) so that breaking out of
+        the loop right after tagging the current item still counts it:
+        `tqdm.__iter__` only advances `n` in code positioned *after* its
+        `yield`, which a `break` skips entirely (Python throws
+        `GeneratorExit` at the suspended `yield`) - leaving the just-tagged
+        item's colored segment past the render boundary and invisible on
+        the final bar, even though its status was already recorded.
+        """
+        try:
+            for i, item in enumerate(self.iterable):
+                # record status for this iteration as default
+                self._set_status(i, self.default_status)
+                self._current_item_idx = i
+
+                print("i", i)
+                print("n", self.n)
+
+                try:
+                    # yield the actual item
+                    yield item
+                finally:
+                    # runs on normal resumption *and* on an early `break`
+                    # (via GeneratorExit), so `n` always reflects this item
+                    self.update(1)
+        finally:
+            self.close()
+
     # main API
-    def tag(self, tag, color="none", status=None):
-        """Record the current item's status.
+    def tag(self, tag, color="none", status=None, index=None):
+        """Record an item's status.
 
         In manual (non-iterable) usage - i.e. no `for x in pbar` loop driving
         `__iter__` - there's no notion of a "current item" for `tag()` to
@@ -307,7 +355,8 @@ class TqdmTag(tqdm):
         correctly identifies the item about to complete) and calls
         `update(1)` itself, so calling `tag()` alone both records the status
         and advances the bar by one - do not also call `.update()` yourself
-        for that same item, or it will be counted twice.
+        for that same item, or it will be counted twice. This auto-advance
+        is skipped whenever `index` is given - see below.
 
         Parameters
         ----------
@@ -320,6 +369,25 @@ class TqdmTag(tqdm):
         status : int, optional
             Override the tag's status integer. Only used the first time
             a new tag name is registered.
+        index : int, optional
+            Item slot to tag, overriding the current item (`self.n` in
+            manual mode, `_current_item_idx` while iterating). `tag()`
+            never advances the bar when `index` is given - it always
+            targets an already-accounted-for slot, not a new item - so
+            call it as many times as needed without affecting `n`. Two
+            uses:
+              - Retrying in manual mode: overwrite a previously tagged
+                item's status (e.g. flip it from `"error"` to `"success"`
+                once a retry succeeds) without double-counting it.
+              - Out-of-order iterables (e.g. `concurrent.futures.
+                as_completed`), where the true slot for a completed item
+                has to be looked up (e.g. via a `future -> index` dict)
+                rather than assumed from iteration/completion order.
+            Works the same whether or not `total` is known: `_set_status`
+            pads any gap up to `index` with `default_status` either way -
+            in the preallocated array (`total` known) it's already
+            default-filled, in the dynamic list (`total` unknown) it
+            extends the list.
         """
         if isinstance(tag, Tag):
             if color == "none" and tag.color is not None:
@@ -329,7 +397,12 @@ class TqdmTag(tqdm):
             tag = tag.name
 
         manual_mode = not self._iterating
-        i = self.n if manual_mode else self._current_item_idx
+        if index is not None:
+            i = index
+        elif manual_mode:
+            i = self.n
+        else:
+            i = self._current_item_idx
 
         # register new tag name on first use
         if tag not in self.tag_to_status:
@@ -346,7 +419,7 @@ class TqdmTag(tqdm):
         if self._legend and tag != self.default_tag_name:
             self._tag_counts[tag] = self._tag_counts.get(tag, 0) + 1
 
-        if manual_mode:
+        if manual_mode and index is None:
             self.update(1)
 
     def _warn_if_status_out_of_range(self, status):
@@ -371,7 +444,22 @@ class TqdmTag(tqdm):
                 stacklevel=3,
             )
 
-    # helper function for coloring functionality
+    # helper functions for coloring functionality
+    def _get_status(self, idx):
+        """Return the currently recorded status for item `idx`.
+
+        Returns
+        -------
+        int or None
+            The recorded status, or `None` if `idx` hasn't been recorded
+            yet (only possible when `total` is unknown).
+        """
+        if self.total is not None:
+            return self._item_status[idx]
+        if idx < len(self._item_status):
+            return self._item_status[idx]
+        return None
+
     def _set_status(self, idx, status):
         """Record `status` for item `idx` in `self._item_status`.
 
