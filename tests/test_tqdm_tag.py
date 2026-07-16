@@ -257,6 +257,11 @@ def test_error_tag_predefined_tags():
 # _get_colors static method
 # ---------------------------------------------------------------------------
 
+def _colour_key(entry):
+    """Dominant (winner) color for a segment, whether solid or blended."""
+    return entry[0] if isinstance(entry, tuple) else entry
+
+
 def test_get_colors_all_default():
     status_to_tag = {0: "default", 1: "warn"}
     tag_to_color = {"default": None, "warn": "yellow"}
@@ -317,7 +322,7 @@ def test_get_colors_segment_boundary_matches_filled():
         tag_to_color={"default": None, "warn": "yellow"},
         default_status=0,
     )
-    tagged_segment = colors.index("yellow")
+    tagged_segment = next(i for i, c in enumerate(colors) if _colour_key(c) == "yellow")
 
     # same boundary ColoredBar.__format__ uses to pick which segments render
     # as fully "filled" for this frac
@@ -357,7 +362,7 @@ def test_get_colors_boundary_never_off_by_more_than_one(total, n_segments):
             tag_to_color={"default": None, "warn": "yellow"},
             default_status=0,
         )
-        tagged_segment = colors.index("yellow")
+        tagged_segment = next(i for i, c in enumerate(colors) if _colour_key(c) == "yellow")
 
         frac = n / total
         filled, _ = divmod(int(frac * n_segments * nsyms), nsyms)
@@ -408,6 +413,100 @@ def test_get_colors_sparse_branch_last_item_reaches_last_segment():
 
 
 # ---------------------------------------------------------------------------
+# _get_colors: blended (mixed-status) segments
+# ---------------------------------------------------------------------------
+
+def test_get_colors_pure_segment_stays_solid():
+    """A segment whose items all share one status must still resolve to a
+    plain color, not a blend tuple - blending only kicks in for genuinely
+    mixed segments."""
+    item_status = np.array([1, 1, 1, 1], dtype=np.uint8)
+    colors = TqdmTag._get_colors(
+        n_segments=1,
+        item_status=item_status,
+        status_to_tag={0: "default", 1: "warn"},
+        tag_to_color={"default": None, "warn": "yellow"},
+        default_status=0,
+    )
+    assert colors == ["yellow"]
+
+
+def test_get_colors_mixed_segment_blends():
+    """A segment mixing one minority status into a majority status must
+    reduce twice - once for the winner, once more over what's left - and
+    report the minority's color plus its fraction of the segment."""
+    # reduce_op=max (default): "warn" (1) outranks "default" (0)
+    item_status = np.array([0, 0, 0, 1], dtype=np.uint8)
+    colors = TqdmTag._get_colors(
+        n_segments=1,
+        item_status=item_status,
+        status_to_tag={0: "default", 1: "warn"},
+        tag_to_color={"default": None, "warn": "yellow"},
+        default_status=0,
+    )
+    assert len(colors) == 1
+    winner_colour, runner_up_colour, winner_fraction = colors[0]
+    assert winner_colour == "yellow"
+    assert runner_up_colour is None  # "default" has no color
+    assert winner_fraction == pytest.approx(0.25)
+
+
+def test_get_colors_three_way_segment_uses_hierarchical_runnerup():
+    """With three distinct statuses in one segment, the runner-up must be
+    the highest of what's left *after* removing the winner - not simply
+    the second most frequent status."""
+    # error(2) > warn(1) > default(0); one error, rest split between
+    # default and warn, so after peeling off "error" the runner-up must
+    # be "warn" even though "default" is more frequent.
+    item_status = np.array([0, 0, 0, 1, 2], dtype=np.uint8)
+    colors = TqdmTag._get_colors(
+        n_segments=1,
+        item_status=item_status,
+        status_to_tag={0: "default", 1: "warn", 2: "error"},
+        tag_to_color={"default": None, "warn": "yellow", "error": "red"},
+        default_status=0,
+    )
+    winner_colour, runner_up_colour, winner_fraction = colors[0]
+    assert winner_colour == "red"
+    assert runner_up_colour == "yellow"
+    assert winner_fraction == pytest.approx(0.2)
+
+
+def test_get_colors_blend_respects_reduce_ignore_default():
+    """`reduce_ignore_default` must filter default-status items before the
+    hierarchical reduce runs, same as it does for the single-status case."""
+    item_status = np.array([0, 0, 1, 2], dtype=np.uint8)
+    colors = TqdmTag._get_colors(
+        n_segments=1,
+        item_status=item_status,
+        status_to_tag={0: "default", 1: "warn", 2: "error"},
+        tag_to_color={"default": None, "warn": "yellow", "error": "red"},
+        default_status=0,
+        reduce_ignore_default=True,
+    )
+    winner_colour, runner_up_colour, winner_fraction = colors[0]
+    assert winner_colour == "red"
+    assert runner_up_colour == "yellow"
+    assert winner_fraction == pytest.approx(0.5)  # 1 error / (1 error + 1 warn)
+
+
+def test_get_colors_sparse_branch_never_blends():
+    """When there are more segments than items, each segment maps to
+    exactly one item - there's nothing to blend, so entries must stay
+    plain colors even though the underlying data has mixed statuses."""
+    total, n_segments = 4, 10
+    item_status = np.array([0, 1, 0, 1], dtype=np.uint8)
+    colors = TqdmTag._get_colors(
+        n_segments=n_segments,
+        item_status=item_status,
+        status_to_tag={0: "default", 1: "warn"},
+        tag_to_color={"default": None, "warn": "yellow"},
+        default_status=0,
+    )
+    assert all(not isinstance(c, tuple) for c in colors)
+
+
+# ---------------------------------------------------------------------------
 # ColoredBar rendering
 # ---------------------------------------------------------------------------
 
@@ -446,3 +545,58 @@ def test_colored_bar_named_color():
     bar = ColoredBar(1.0, default_len=2, segment_colours=["red", "red"])
     rendered = f"{bar}"
     assert "\x1b[31m" in rendered
+
+
+def test_colored_bar_blended_segment_uses_fg_and_bg():
+    """A blended (winner, runner_up, fraction) segment must render with a
+    foreground escape for the winner and a background escape for the
+    runner-up, wrapping a single glyph."""
+    bar = ColoredBar(1.0, default_len=1, segment_colours=[("red", "green", 0.5)])
+    rendered = f"{bar}"
+    assert "\x1b[31m" in rendered  # red foreground
+    assert "\x1b[42m" in rendered  # green background
+    assert rendered.count(ColoredBar.COLOUR_RESET) == 1
+
+
+def test_colored_bar_blended_segment_glyph_not_full_or_empty():
+    """The blend glyph must reflect the split, not collapse to a solid
+    full block or a blank - that would silently erase one of the two
+    statuses being represented."""
+    bar = ColoredBar(1.0, default_len=1, segment_colours=[("red", "green", 0.5)])
+    rendered = f"{bar}"
+    for stripped_char in (ColoredBar.UTF[0], ColoredBar.UTF[-1]):
+        assert stripped_char not in rendered
+
+
+def test_colored_bar_blend_fraction_clamped_away_from_edges():
+    """Even a near-vanishing minority (or majority) must still show a hint
+    of its color - the glyph index is clamped so neither side of a
+    genuinely mixed segment fully disappears."""
+    bar = ColoredBar(1.0, default_len=1, segment_colours=[("red", "green", 0.01)])
+    rendered = f"{bar}"
+    assert "\x1b[31m" in rendered
+    assert "\x1b[42m" in rendered
+    assert ColoredBar.UTF[1] in rendered  # clamped to the smallest non-empty glyph
+
+
+def test_colored_bar_blend_ignored_for_ascii_charset():
+    """ASCII has no eighths-glyph staircase to blend with, so a blended
+    segment must fall back to its winner color alone."""
+    bar = ColoredBar(
+        1.0, default_len=1, charset=ColoredBar.ASCII,
+        segment_colours=[("red", "green", 0.5)],
+    )
+    rendered = f"{bar}"
+    assert "\x1b[31m" in rendered
+    assert "\x1b[42m" not in rendered
+
+
+def test_colored_bar_boundary_segment_ignores_blend_fraction():
+    """The fractional-edge cell's glyph already encodes overall progress;
+    a blended color there must contribute only its winner color, not a
+    second sub-cell split (which would conflict with the edge glyph's
+    meaning)."""
+    bar = ColoredBar(0.5, default_len=2, segment_colours=[None, ("red", "green", 0.5)])
+    rendered = f"{bar}"
+    assert "\x1b[31m" in rendered
+    assert "\x1b[42m" not in rendered

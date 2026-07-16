@@ -41,7 +41,7 @@ See the [API reference](api.md) for full class and method documentation.
 - **Live legend** — `legend=True` renders a second line below the bar with a colored swatch and count per tag, updating in real time.
 - **Dynamic tags** — define tags upfront via `tags=[...]` or register them on the fly by passing a `Tag` object to `.tag()`.
 - **Color support** — named colors (`"red"`, `"yellow"`, …) and hex strings (`"#ff4444"`).
-- **Status reduction** — configure how multiple tagged items within one bar segment are combined (`max`, `min`, or any callable).
+- **Status reduction** — configure how multiple tagged items within one bar segment are combined (`max`, `min`, or any callable). Genuinely mixed segments render as a proportional fg/bg color blend instead of flattening to one winner.
 - **Custom legend** — `legend_format` accepts a callable for full control over the legend line.
 - **Resumable bars** — `initial` and `initial_status` pick a bar back up mid-run, restoring per-item tag history rather than starting the display from scratch.
 - **Retag by index** — `.tag(..., index=i)` overwrites a specific item's status without advancing the bar, for retry logic in manual mode or out-of-order iterables.
@@ -152,6 +152,11 @@ for i in pbar:
     if i % 10 == 1: pbar.tag("warn")
     if i % 10 == 2: pbar.tag("error")
 ```
+
+A segment that's genuinely mixed (not every item shares one status) doesn't just flatten to `reduce_op`'s winner — it's reduced a second time over whatever's left, and rendered as a single character split proportionally between the winner's color (foreground) and the runner-up's color (background), so a minority status stays visible instead of being fully outvoted or fully hiding the majority.
+
+!!! note
+    Blending only applies with the default Unicode charset; `ascii=True` bars fall back to the flat winner color, since ASCII has no sub-character glyphs to blend with.
 
 ### Resume a bar after a restart
 

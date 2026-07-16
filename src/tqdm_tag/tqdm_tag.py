@@ -491,13 +491,24 @@ class TqdmTag(tqdm):
         reduce_ignore_default=False,
         **kwargs,
     ):
-        """Compute a color per bar segment from per-item statuses.
+        """Compute a color (or blended fg/bg color pair) per bar segment.
 
         Splits `item_status` into `n_segments` chunks (or, if there are
         fewer items than segments, maps each item to one or more
-        segments), reduces the statuses within each chunk to a single
-        representative status via `reduce_op`, and resolves that status
-        to a tag's color.
+        segments) and reduces the statuses within each chunk via
+        `reduce_op`. A chunk holding a single status - the common case
+        when `n_segments >= len(item_status)` - resolves to a plain
+        color. A chunk holding multiple distinct statuses is reduced
+        *twice*: once over every status to find the "winner", and once
+        more over whatever's left to find the "runner-up" - so e.g. with
+        the default `reduce_op=max`, the highest-status item's tag still
+        wins the segment (as before), but the next-highest status
+        present is also captured rather than discarded. The pair is
+        returned as `(winner_color, runner_up_color, winner_fraction)`
+        so `ColoredBar` can render the segment's single character as a
+        proportional blend (foreground = winner, background = runner-up)
+        instead of flattening the chunk to one color and losing whatever
+        else was in it.
 
         Parameters
         ----------
@@ -525,7 +536,11 @@ class TqdmTag(tqdm):
         Returns
         -------
         list
-            One color (or `None`) per segment, length `n_segments`.
+            One entry per segment, length `n_segments`. Each entry is
+            either a color (or `None`) for a segment with a single
+            effective status, or a `(winner_color, runner_up_color,
+            winner_fraction)` tuple for a segment whose items span
+            multiple statuses.
         """
         if len(item_status) == 0:
             return [None] * n_segments
@@ -540,21 +555,30 @@ class TqdmTag(tqdm):
         else:  # more elements than segments -> each segment may contain different stati
             spl = [item_status[edges[i]:edges[i + 1]] for i in range(n_segments)]
 
-        # assign
-        def reducer(sp):
+        def resolve_color(status):
+            return tag_to_color.get(status_to_tag[status], None)
+
+        def reduce_segment(sp):
             if reduce_ignore_default:
                 # filter default status from current split
                 sp = [s_ for s_ in sp if s_ != default_status]
                 # avoid empty splits due to filtering
                 if not sp: sp = [default_status]
 
-            return reduce_op(sp)
+            winner = reduce_op(sp)
+            remaining = [s_ for s_ in sp if s_ != winner]
+            if not remaining:
+                # single effective status in this segment -> flat color, as before
+                return resolve_color(winner)
 
-        segment_status = [reducer(spl_) for spl_ in spl]
+            # hierarchical reduce: apply the same op to whatever's left after
+            # removing the winner, so a second status survives instead of
+            # being silently outvoted
+            runner_up = reduce_op(remaining)
+            winner_fraction = (len(sp) - len(remaining)) / len(sp)
+            return resolve_color(winner), resolve_color(runner_up), winner_fraction
 
-        segment_color_name = [status_to_tag[st_] for st_ in segment_status]
-        segment_color = [tag_to_color.get(tag_, None) for tag_ in segment_color_name]
-        return segment_color
+        return [reduce_segment(spl_) for spl_ in spl]
 
     @property
     def format_dict(self):
@@ -1004,6 +1028,7 @@ class ColoredBar(Bar):
     BLANK = "  "
     COLOUR_RESET = "\x1b[0m"
     COLOUR_RGB = "\x1b[38;2;%d;%d;%dm"
+    COLOUR_RGB_BG = "\x1b[48;2;%d;%d;%dm"
     COLOURS = {
         "BLACK": "\x1b[30m",
         "RED": "\x1b[31m",
@@ -1030,8 +1055,9 @@ class ColoredBar(Bar):
             String of characters from emptiest to fullest block, used
             to render partial segments (default `UTF`).
         segment_colours : sequence, optional
-            Color (name, hex string, or `None`) for each segment, indexed
-            in render order.
+            Color (name, hex string, or `None`), or `(winner_color,
+            runner_up_color, winner_fraction)` for a blended segment, per
+            segment - see `TqdmTag._get_colors`. Indexed in render order.
         """
         if not 0 <= frac <= 1:
             warnings.warn("clamping frac to range [0, 1]", TqdmWarning, stacklevel=2)
@@ -1042,7 +1068,7 @@ class ColoredBar(Bar):
         self.charset = charset
         self.segment_colours = segment_colours
 
-    def _resolve_colour(self, value):
+    def _resolve_colour(self, value, background=False):
         """Resolve a color name or hex string to an ANSI escape sequence.
 
         Parameters
@@ -1050,6 +1076,11 @@ class ColoredBar(Bar):
         value : str or None
             A key in `COLOURS` (case-insensitive), a `"#rrggbb"` hex
             string, or `None`.
+        background : bool, optional
+            If `True`, resolve to the background-color escape instead of
+            the foreground one (default `False`). Used to render blended
+            segments, where the runner-up status colors the "unfilled"
+            part of the segment's glyph rather than the glyph itself.
 
         Returns
         -------
@@ -1061,11 +1092,13 @@ class ColoredBar(Bar):
             return None
         if isinstance(value, str):
             if value.upper() in self.COLOURS:
-                return self.COLOURS[value.upper()]
+                code = self.COLOURS[value.upper()]
+                # foreground codes are "\x1b[3Nm"; background is the same
+                # code with the family digit swapped 3 -> 4
+                return code[:2] + "4" + code[3:] if background else code
             if value.startswith("#") and len(value) == 7:
-                return self.COLOUR_RGB % tuple(
-                    int(value[i : i + 2], 16) for i in (1, 3, 5)
-                )
+                rgb = tuple(int(value[i : i + 2], 16) for i in (1, 3, 5))
+                return (self.COLOUR_RGB_BG if background else self.COLOUR_RGB) % rgb
         return None
 
     def __format__(self, format_spec):
@@ -1075,6 +1108,14 @@ class ColoredBar(Bar):
         trailing `a`/`u`/`b` selects the ASCII/UTF/BLANK charset, and a
         leading integer sets the bar width (negative values subtract
         from `default_len`).
+
+        A segment whose `segment_colours` entry is a `(winner_color,
+        runner_up_color, winner_fraction)` tuple - see
+        `TqdmTag._get_colors` - renders as a single glyph split
+        proportionally between the two colors (foreground = winner,
+        background = runner-up), using the UTF charset's eighths-block
+        staircase. Only available with the UTF charset; ASCII/BLANK fall
+        back to the winner color alone.
 
         Parameters
         ----------
@@ -1109,19 +1150,35 @@ class ColoredBar(Bar):
         bar = []
 
         # --- render full blocks ---
-        # TODO: remove random colors
         segment_colours = self.segment_colours
+        # sub-cell blending needs the full eighths glyph staircase (UTF); ASCII
+        # digits and the blank charset have no equivalent, so those charsets
+        # fall back to the segment's winner color only, same as before
+        blend_eligible = charset == self.UTF
         for i in range(filled):
-            colour = self._resolve_colour(
-                segment_colours[i]
-            )  # segment_colours[i] if i < len(segment_colours) else None
+            spec = segment_colours[i]
             sym = charset[-1]
-            bar.append(f"{colour}{sym}{self.COLOUR_RESET}" if colour else sym)
+            if blend_eligible and isinstance(spec, tuple):
+                winner_colour, runner_up_colour, winner_fraction = spec
+                fg = self._resolve_colour(winner_colour)
+                bg = self._resolve_colour(runner_up_colour, background=True)
+                # clamp away from 0/nsyms so neither status ever fully
+                # vanishes from a segment that's genuinely mixed
+                k = min(max(round(winner_fraction * nsyms), 1), nsyms - 1)
+                sym = charset[k]
+                bar.append(f"{fg or ''}{bg or ''}{sym}{self.COLOUR_RESET}")
+            else:
+                colour = self._resolve_colour(spec[0] if isinstance(spec, tuple) else spec)
+                bar.append(f"{colour}{sym}{self.COLOUR_RESET}" if colour else sym)
 
         # --- fractional block ---
         if filled < N_BARS:
             sym = charset[remainder]
-            colour = self._resolve_colour(segment_colours[filled])
+            spec = segment_colours[filled]
+            # this glyph's shape already encodes the overall progress fraction
+            # (`remainder`), so a blended segment here only contributes its
+            # winner color, not a second sub-cell split
+            colour = self._resolve_colour(spec[0] if isinstance(spec, tuple) else spec)
             bar.append(f"{colour}{sym}{self.COLOUR_RESET}" if colour else sym)
             bar.extend(charset[0] * (N_BARS - filled - 1))
 
