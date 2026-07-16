@@ -50,6 +50,28 @@ def test_tag_records_status():
     assert pbar._item_status[3] == 0
 
 
+def test_partially_completed_bar_renders_untouched_items_as_default():
+    """Items beyond the current progress edge sit at `_UNSET_STATUS`
+    (never explicitly tagged) in the preallocated array; rendering the bar
+    must resolve those to the default color rather than crashing or
+    treating the sentinel as a real, out-ranking status."""
+    out = io.StringIO()
+    warn = Tag("warn", color="yellow", status=1)
+    pbar = TqdmTag(range(10), tags=[warn], file=out, mininterval=0, disable=False)
+    for i in pbar:
+        if i == 2:
+            pbar.tag("warn")
+        if i == 3:
+            break
+
+    # items 4-9 were never reached, still _UNSET_STATUS internally
+    assert (pbar._item_status[4:] == TqdmTag._UNSET_STATUS).all()
+
+    colors = TqdmTag._get_colors(n_segments=10, **pbar.format_dict)
+    assert colors[2] == "yellow"
+    assert all(c is None for c in colors[3:])
+
+
 def test_tag_with_tag_object():
     out = io.StringIO()
     err = Tag("error", color="red", status=2)
@@ -206,10 +228,42 @@ def test_tag_index_manual_mode_without_total():
         assert pbar._item_status[0] == 0
 
         # jump ahead to a slot beyond the list's current length - must pad
-        # the gap with default_status rather than raise
+        # the gap with _UNSET_STATUS (genuinely untouched, not
+        # default_status) rather than raise. Slot 5 was never seen before,
+        # so this first-time index= tag also counts it (n advances).
         pbar.tag("warn", index=5)
+        assert pbar.n == 3
+        unset = TqdmTag._UNSET_STATUS
+        assert pbar._item_status == [0, 0, unset, unset, unset, 1]
+
+
+def test_tag_index_first_touch_advances_n_manual_mode():
+    """A first-time `tag(..., index=i)` for a never-before-seen slot must
+    count it (advance `n`), just like `index=None` would - only a *retry*
+    of an already-tagged slot should leave `n` alone."""
+    out = io.StringIO()
+    tags = [Tag("success", color="green", status=1), Tag("error", color="red", status=2)]
+    with TqdmTag(total=5, tags=tags, file=out) as pbar:
+        # out-of-order manual-mode completions, e.g. as_completed(futures)
+        pbar.tag("success", index=2)
+        assert pbar.n == 1
+        assert pbar._item_status[2] == 1
+
+        pbar.tag("error", index=0)
         assert pbar.n == 2
-        assert pbar._item_status == [0, 0, 0, 0, 0, 1]
+        assert pbar._item_status[0] == 2
+
+        # retry slot 0 - already seen, must not advance n again
+        pbar.tag("success", index=0)
+        assert pbar.n == 2
+        assert pbar._item_status[0] == 1
+
+
+def test_default_status_colliding_with_unset_sentinel_raises():
+    """`default_status` must not collide with the reserved `_UNSET_STATUS`
+    sentinel used to distinguish "never tagged" from "explicitly default"."""
+    with pytest.raises(ValueError, match="_UNSET_STATUS|unset"):
+        TqdmTag(total=3, default_status=TqdmTag._UNSET_STATUS)
 
 
 def test_tag_index_retag_updates_legend_counts():
@@ -226,14 +280,12 @@ def test_tag_index_retag_updates_legend_counts():
         legend_show_default=True,
         file=out,
     ) as pbar:
-        pbar.tag("pool", index=0)
-        pbar.tag("success", index=0)
-        pbar.update(1)
-        pbar.tag("success", index=1)
-        pbar.update(1)
-        pbar.tag("success", index=2)
-        pbar.update(1)
+        pbar.tag("pool", index=0)      # first touch of slot 0 -> counts it
+        pbar.tag("success", index=0)  # retry of slot 0 -> already counted
+        pbar.tag("success", index=1)  # first touch of slot 1 -> counts it
+        pbar.tag("success", index=2)  # first touch of slot 2 -> counts it
 
+    assert pbar.n == 3
     assert pbar._tag_counts == {"pool": 0}
     assert pbar._legend_tag_counts() == {"success": 3, "pool": 0}
 
@@ -283,10 +335,9 @@ def test_prune_legend_with_show_default_hides_zero_default():
         prune_legend=True,
         file=out,
     ) as pbar:
-        pbar.tag("warn", index=0)
-        pbar.update(1)
-        pbar.tag("warn", index=1)
-        pbar.update(1)
+        pbar.tag("warn", index=0)  # first touch of slot 0 -> counts it
+        pbar.tag("warn", index=1)  # first touch of slot 1 -> counts it
+        assert pbar.n == 2
         assert pbar._legend_tag_counts() == {"warn": 2}
 
 
@@ -366,6 +417,43 @@ def test_get_colors_mixed():
     )
     assert colors[:2] == [None, None]
     assert colors[2:] == ["yellow", "yellow"]
+
+
+def test_get_colors_unset_sentinel_renders_as_default():
+    """Segments made up entirely of `_UNSET_STATUS` (never explicitly
+    tagged, e.g. not-yet-reached items) must render as the default color,
+    not as a colored/flagged segment."""
+    unset = TqdmTag._UNSET_STATUS
+    item_status = np.full(4, unset, dtype=np.uint8)
+    status_to_tag = {0: "default", 1: "warn"}
+    tag_to_color = {"default": None, "warn": "yellow"}
+    colors = TqdmTag._get_colors(
+        n_segments=4,
+        item_status=item_status,
+        status_to_tag=status_to_tag,
+        tag_to_color=tag_to_color,
+        default_status=0,
+    )
+    assert colors == [None, None, None, None]
+
+
+def test_get_colors_unset_sentinel_does_not_outrank_real_tag():
+    """A segment mixing `_UNSET_STATUS` (untouched) items with a real tag
+    must resolve to that tag's color, not the sentinel - `reduce_op=max`
+    would otherwise always pick the sentinel, since it's the dtype's max
+    value, silently hiding every real tag it shares a segment with."""
+    unset = TqdmTag._UNSET_STATUS
+    item_status = np.array([unset, unset, 1, unset], dtype=np.uint8)
+    status_to_tag = {0: "default", 1: "warn"}
+    tag_to_color = {"default": None, "warn": "yellow"}
+    colors = TqdmTag._get_colors(
+        n_segments=1,
+        item_status=item_status,
+        status_to_tag=status_to_tag,
+        tag_to_color=tag_to_color,
+        default_status=0,
+    )
+    assert colors == ["yellow"]
 
 
 def test_get_colors_empty():

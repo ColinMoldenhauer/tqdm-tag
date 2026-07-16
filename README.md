@@ -179,7 +179,7 @@ for i in pbar:
 
 ### Retag an item by index
 
-Pass `index` to `.tag()` to target a specific slot instead of the current item. `tag()` never auto-advances the bar when `index` is given, so it's safe to overwrite an already-counted item's status - useful for retry logic in manual (non-iterable) mode:
+Pass `index` to `.tag()` to target a specific slot instead of the current item. In manual (non-iterable) mode, whether this advances the bar depends on whether that slot was ever tagged before: the first `tag(..., index=i)` for a given `i` counts it (same as `index=None` would), while a later `tag(..., index=i)` call on that same slot is treated as a retry and leaves `n` alone:
 
 ```python
 from tqdm_tag import Tag, TqdmTag
@@ -195,12 +195,15 @@ for i, item in enumerate(items):
         pbar.tag("error")  # n advances either way
 
 # later: retry failed items, flip their status without touching n
+# (these slots were already tagged above, so this is recognized as a retry)
 for i in failed_indices:
     if retry(items[i]):
         pbar.tag("success", index=i)
 ```
 
-`index` also fits out-of-order iterables (e.g. `concurrent.futures.as_completed`), where the true slot for a completed item has to be looked up rather than assumed from completion order. Works whether or not `total` is known.
+`index` also fits out-of-order completions in manual mode (e.g. iterating `concurrent.futures.as_completed` directly, not via `for x in pbar`), where the true slot for a completed item has to be looked up rather than assumed from completion order - the first `tag(..., index=true_idx)` for a slot both records its status and counts it. Works whether or not `total` is known.
+
+**Caveat:** the "already tagged?" check only sees slots that went through `.tag()` (or `initial_status`/iteration). If you count an item with a bare `pbar.update(1)` and never `.tag()` that slot, it's harmless on its own - but if you *later* call `tag(..., index=that_slot)` for the first time, it'll look unseen and advance `n` again, double-counting it. If you're going to `.tag(index=...)` a slot at all, route its completion through `.tag()` from the start (even the plain-success case, e.g. `pbar.tag("success", index=i)`) rather than mixing in a separate `update(1)` for the same slot.
 
 ## API
 

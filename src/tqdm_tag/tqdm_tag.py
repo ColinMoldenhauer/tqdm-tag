@@ -51,6 +51,15 @@ class TqdmTag(tqdm):
     _STATUS_DTYPE = np.uint8
     _STATUS_DTYPE_INFO = np.iinfo(_STATUS_DTYPE)
 
+    # reserved sentinel meaning "never explicitly tagged", distinct from
+    # `default_status` (which is a real, user-visible tag someone can be
+    # tagged with on purpose). Used to fill preallocated/padded slots so
+    # `tag()` and `__iter__` can tell "untouched" apart from "explicitly
+    # default" - see `_get_colors` for how this collapses back to
+    # `default_status` at render time, and `tag()` for how it drives the
+    # first-touch-vs-retry decision on `index=`.
+    _UNSET_STATUS = int(_STATUS_DTYPE_INFO.max)
+
     def __init__(
         self,
         iterable=None,
@@ -139,6 +148,12 @@ class TqdmTag(tqdm):
         **kwargs
             Forwarded to `tqdm.__init__`.
         """
+        # set before any validation that might raise: tqdm.__del__ calls
+        # close(), which reads self.disable - without this, a validation
+        # error raised before super().__init__() sets it for real would
+        # leave a half-constructed instance that crashes on garbage
+        # collection instead of cleanly no-op'ing
+        self.disable = True
 
         # replicate tqdm's total parsing
         if total is None and iterable is not None:
@@ -150,15 +165,24 @@ class TqdmTag(tqdm):
             # Infinite iterations, behave same as unknown
             total = None
 
+        if default_status == self._UNSET_STATUS:
+            raise ValueError(
+                f"default_status={default_status} collides with the reserved "
+                f"'unset' sentinel ({self._UNSET_STATUS}) that TqdmTag uses "
+                "internally to mark items as never tagged; choose a "
+                "different default_status"
+            )
+
         # initialize the status for each iterable item
         # needs to be set before super().__init__ because it calls overridden format_dict()
         if total is not None:
             # number of iterable items known -> preallocate, filled with
-            # default_status so items in an `initial` prefix (never written
-            # to by __iter__, since it starts enumerating at `initial`)
-            # render as "untagged" rather than whatever status happens to be 0,
-            # unless overwritten below by `initial_status`
-            self._item_status = np.full(total, default_status, dtype=self._STATUS_DTYPE)
+            # _UNSET_STATUS so items in an `initial` prefix (never written to
+            # by __iter__, since it starts enumerating at `initial`) can be
+            # told apart from items explicitly tagged default_status; both
+            # still render as "untagged" (see `_get_colors`), unless
+            # overwritten below by `initial_status`
+            self._item_status = np.full(total, self._UNSET_STATUS, dtype=self._STATUS_DTYPE)
         else:
             # number unknown -> use python's dynamic sized list
             self._item_status = []
@@ -268,8 +292,10 @@ class TqdmTag(tqdm):
         non-zero `initial`, be mutated by user code, or lag behind `n` for
         display-throttling reasons).
 
-        The reset is skipped for a slot that already holds a non-default
-        status. This matters for out-of-order iterables (e.g.
+        The reset is skipped for a slot that's already been explicitly
+        written (i.e. isn't still `_UNSET_STATUS`) - which includes a slot
+        deliberately tagged `default_status`, not just a non-default one.
+        This matters for out-of-order iterables (e.g.
         `concurrent.futures.as_completed`), where `i` is completion order,
         not the item's true position - the loop body tags the true slot via
         `tag(..., index=true_idx)` instead of relying on `i`. Since `i` and
@@ -305,7 +331,7 @@ class TqdmTag(tqdm):
             for i, item in enumerate(self.iterable, start=initial):
                 self._current_item_idx = i
                 current = self._get_status(i)
-                if current is None or current == self.default_status:
+                if current is None or current == self._UNSET_STATUS:
                     self._set_status(i, self.default_status)
                 try:
                     yield item
@@ -361,8 +387,7 @@ class TqdmTag(tqdm):
         correctly identifies the item about to complete) and calls
         `update(1)` itself, so calling `tag()` alone both records the status
         and advances the bar by one - do not also call `.update()` yourself
-        for that same item, or it will be counted twice. This auto-advance
-        is skipped whenever `index` is given - see below.
+        for that same item, or it will be counted twice.
 
         Parameters
         ----------
@@ -377,23 +402,42 @@ class TqdmTag(tqdm):
             a new tag name is registered.
         index : int, optional
             Item slot to tag, overriding the current item (`self.n` in
-            manual mode, `_current_item_idx` while iterating). `tag()`
-            never advances the bar when `index` is given - it always
-            targets an already-accounted-for slot, not a new item - so
-            call it as many times as needed without affecting `n`. Two
-            uses:
+            manual mode, `_current_item_idx` while iterating). In manual
+            mode, whether this advances `n` depends on whether `index` was
+            ever seen before: a slot still holding `_UNSET_STATUS` (never
+            written by `tag()`, `initial_status`, or `__iter__`) is treated
+            as a new completion and advances `n`, exactly like `index=None`
+            would; a slot that already holds a real status - including
+            `default_status`, if it was explicitly assigned - is treated as
+            a retry and leaves `n` alone. This never advances the bar while
+            iterating (`self._iterating`), since `__iter__` already advances
+            `n` once per pulled item regardless of `index`. Two uses:
               - Retrying in manual mode: overwrite a previously tagged
                 item's status (e.g. flip it from `"error"` to `"success"`
                 once a retry succeeds) without double-counting it.
-              - Out-of-order iterables (e.g. `concurrent.futures.
-                as_completed`), where the true slot for a completed item
-                has to be looked up (e.g. via a `future -> index` dict)
-                rather than assumed from iteration/completion order.
+              - Out-of-order completions in manual mode (e.g. iterating
+                `concurrent.futures.as_completed` directly, not via
+                `for x in pbar`): the true slot for a completed item has to
+                be looked up (e.g. via a `future -> index` dict) rather than
+                assumed from completion order; the first `tag(..., index=i)`
+                for a given `i` both records its status and counts it.
+
+            Caveat: this first-touch detection only sees slots that went
+            through `tag()` (or `initial_status`/`__iter__`). If you count
+            an item with a bare `self.update(1)` and *never* call
+            `tag(..., index=that_slot)` for it, the slot stays
+            `_UNSET_STATUS` forever - fine on its own, but if you later do
+            call `tag(..., index=that_slot)` for the first time, it will
+            look unseen and advance `n` again, double-counting it. Route
+            every completion you intend to also `tag()` through `tag()`
+            itself (even the default/success case, e.g.
+            `tag(default_tag_name, index=i)`) rather than mixing in bare
+            `update(1)` calls for the same slots.
+
             Works the same whether or not `total` is known: `_set_status`
-            pads any gap up to `index` with `default_status` either way -
-            in the preallocated array (`total` known) it's already
-            default-filled, in the dynamic list (`total` unknown) it
-            extends the list.
+            pads any gap up to `index` with `_UNSET_STATUS` either way - in
+            the preallocated array (`total` known) it's already filled that
+            way, in the dynamic list (`total` unknown) it extends the list.
         """
         if isinstance(tag, Tag):
             if color == "none" and tag.color is not None:
@@ -420,23 +464,30 @@ class TqdmTag(tqdm):
         if color != "none":
             self.tag_to_color[tag] = color
 
-        if self._legend:
-            prev_status = self._get_status(i)
-            if prev_status is not None:
-                prev_tag = self.status_to_tag.get(int(prev_status))
-                if prev_tag in self._tag_counts:
-                    self._tag_counts[prev_tag] = max(self._tag_counts[prev_tag] - 1, 0)
+        # look up this slot's previous status before overwriting it - used
+        # both to keep the legend's per-tag counts in sync (decrement
+        # whatever tag this slot previously held) and to tell a first-time
+        # index= tag (never counted toward n yet) apart from a retry
+        # (already counted) - see _UNSET_STATUS
+        prev_status = self._get_status(i)
+        prev_unset = prev_status is None or prev_status == self._UNSET_STATUS
+
+        if self._legend and not prev_unset:
+            prev_tag = self.status_to_tag.get(int(prev_status))
+            if prev_tag in self._tag_counts:
+                self._tag_counts[prev_tag] = max(self._tag_counts[prev_tag] - 1, 0)
 
         self._set_status(i, self.tag_to_status[tag])
 
         if self._legend and tag != self.default_tag_name:
             self._tag_counts[tag] = self._tag_counts.get(tag, 0) + 1
 
-        if manual_mode and index is None:
+        if manual_mode and (index is None or prev_unset):
             self.update(1)
 
     def _warn_if_status_out_of_range(self, status):
-        """Warn if `status` won't fit in the preallocated per-item status array.
+        """Warn if `status` won't fit in the preallocated per-item status array,
+        or collides with the reserved `_UNSET_STATUS` sentinel.
 
         When `total` is known, `_item_status` is a fixed `_STATUS_DTYPE`
         numpy array (`uint8` by default) for memory efficiency; writing a
@@ -444,6 +495,16 @@ class TqdmTag(tqdm):
         Warn as soon as such a status is registered, rather than leaving the
         user to debug a cryptic numpy error once the item is actually tagged.
         """
+        if status == self._UNSET_STATUS:
+            warnings.warn(
+                f"status {status} collides with the reserved 'unset' "
+                f"sentinel ({self._UNSET_STATUS}) that TqdmTag uses "
+                "internally to mark items as never tagged; items written "
+                "with this status will be treated as untagged for "
+                "rendering, the legend, and index= auto-advance purposes",
+                TqdmWarning,
+                stacklevel=3,
+            )
         if self.total is None:
             return
         dtype_info = self._STATUS_DTYPE_INFO
@@ -464,8 +525,10 @@ class TqdmTag(tqdm):
         Returns
         -------
         int or None
-            The recorded status, or `None` if `idx` hasn't been recorded
-            yet (only possible when `total` is unknown).
+            The recorded status - which may be `_UNSET_STATUS` if this slot
+            was preallocated/padded but never explicitly written - or `None`
+            if `idx` hasn't been recorded at all yet (only possible when
+            `total` is unknown).
         """
         if self.total is not None:
             return self._item_status[idx]
@@ -498,10 +561,12 @@ class TqdmTag(tqdm):
                 self._item_status[idx] = status
             else:
                 # pad any gap before idx (e.g. an `initial` prefix that was
-                # never iterated in this run) with default_status, so the
-                # list stays index-aligned with absolute item position
+                # never iterated in this run, or a jump-ahead index= tag)
+                # with _UNSET_STATUS, so the list stays index-aligned with
+                # absolute item position while still marking the padded
+                # slots as genuinely untouched, not default_status
                 self._item_status.extend(
-                    [self.default_status] * (idx - len(self._item_status))
+                    [self._UNSET_STATUS] * (idx - len(self._item_status))
                 )
                 self._item_status.append(status)
 
@@ -547,7 +612,9 @@ class TqdmTag(tqdm):
             Maps tag name to color.
         default_status : int
             Status value considered "untagged"; used by
-            `reduce_ignore_default`.
+            `reduce_ignore_default`. Also the color a segment falls back to
+            once its `_UNSET_STATUS` (never explicitly tagged) items are
+            stripped out, whether or not `reduce_ignore_default` is set.
         reduce_op : callable, optional
             Reduction applied to the statuses in a segment (default `max`).
         reduce_ignore_default : bool, optional
@@ -584,6 +651,16 @@ class TqdmTag(tqdm):
             return tag_to_color.get(status_to_tag[status], None)
 
         def reduce_segment(sp):
+            # items never explicitly tagged (still _UNSET_STATUS, e.g. not
+            # yet reached) carry no real status - drop them before applying
+            # reduce_op, so e.g. reduce_op=max can't let the sentinel (the
+            # dtype's max value) out-rank a real tag it happens to share a
+            # segment with. A segment left with nothing else is exactly the
+            # untouched case and renders as default_status, same as an item
+            # explicitly tagged default would
+            sp = [s_ for s_ in sp if s_ != TqdmTag._UNSET_STATUS]
+            if not sp: sp = [default_status]
+
             if reduce_ignore_default:
                 # filter default status from current split
                 sp = [s_ for s_ in sp if s_ != default_status]
