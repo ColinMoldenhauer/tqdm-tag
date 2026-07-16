@@ -43,6 +43,7 @@ See the [API reference](api.md) for full class and method documentation.
 - **Color support** — named colors (`"red"`, `"yellow"`, …) and hex strings (`"#ff4444"`).
 - **Status reduction** — configure how multiple tagged items within one bar segment are combined (`max`, `min`, or any callable).
 - **Custom legend** — `legend_format` accepts a callable for full control over the legend line.
+- **Resumable bars** — `initial` and `initial_status` pick a bar back up mid-run, restoring per-item tag history rather than starting the display from scratch.
 
 ## Examples
 
@@ -132,3 +133,26 @@ for i in pbar:
     if i % 10 == 1: pbar.tag("warn")
     if i % 10 == 2: pbar.tag("error")
 ```
+
+### Resume a bar after a restart
+
+Pass `initial` (the number of items already done) so the bar picks up at the right percentage, and `initial_status` to restore the previous run's per-item tags instead of showing that prefix as untagged:
+
+```python
+from tqdm_tag import Tag, TqdmTag
+
+tags = [Tag("warn", color="yellow", status=1), Tag("error", color="red", status=2)]
+
+# first run got 30/100 done, with items 5 and 12 warned, item 21 errored
+pbar = TqdmTag(
+    range(30, 100),
+    total=100,
+    initial=30,
+    tags=tags,
+    initial_status={5: 1, 12: 1, 21: 2},  # {index: status}, e.g. loaded from a checkpoint
+)
+for i in pbar:
+    ...
+```
+
+`initial_status` also accepts a sparse `(2, N)` array (`[indices, statuses]`) or a dense `(total,)` array giving every item's status directly.
