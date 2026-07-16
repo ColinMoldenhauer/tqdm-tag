@@ -474,6 +474,18 @@ class TqdmTag(tqdm):
         otherwise appends to (or overwrites within) the dynamic list.
         """
         if self.total is not None:
+            dtype_info = self._STATUS_DTYPE_INFO
+            if not (dtype_info.min <= status <= dtype_info.max):
+                # Raise explicitly instead of relying on numpy's assignment
+                # behavior: newer numpy raises OverflowError on out-of-range
+                # scalar assignment, but older numpy (e.g. still in use on
+                # Python 3.8) only warns and silently wraps the value, which
+                # would leave `_item_status` holding an unregistered status.
+                raise OverflowError(
+                    f"status {status} is outside the {self._STATUS_DTYPE.__name__} "
+                    f"range ({dtype_info.min}-{dtype_info.max}) used to store "
+                    "per-item status when `total` is known"
+                )
             self._item_status[idx] = status
         else:
             if idx < len(self._item_status):
