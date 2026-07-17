@@ -10,6 +10,7 @@ from tqdm.std import Bar
 from tqdm.utils import (
     FormatReplace,
     _is_ascii,
+    _term_move_up,
     disp_len,
     disp_trim,
 )
@@ -1075,6 +1076,14 @@ class TqdmTag(tqdm):
         every live bar before printing and redraws them after) doesn't
         leave stale legend text sitting on its own, orphaned row.
 
+        The whole move-down/write/move-up sequence is issued as a single
+        `write()` + one trailing `flush()`, rather than going through
+        `moveto()` (which flushes internally on every call) twice - on a
+        real terminal, each extra flush is a separate syscall the terminal
+        can paint as its own visible frame, so splitting one logical
+        redraw into several flushes shows up as flicker even when the
+        cursor math itself is correct.
+
         Parameters
         ----------
         pos : int
@@ -1092,9 +1101,9 @@ class TqdmTag(tqdm):
                 return
         width = self.ncols or 80
         line_pos = abs(pos) + 1
-        self.moveto(line_pos)
-        self.fp.write(f"\r{content:<{width}}\r")
-        self.moveto(-line_pos)
+        move_down = "\n" * line_pos
+        move_up = _term_move_up() * line_pos
+        self.fp.write(f"{move_down}\r{content:<{width}}\r{move_up}")
         self.fp.flush()
         self._legend_active = bool(content)
 
