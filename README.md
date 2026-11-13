@@ -12,17 +12,20 @@
 [![Docs](https://readthedocs.org/projects/tqdm-tag/badge/?version=latest)](https://tqdm-tag.readthedocs.io)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-**tqdm-tag** extends [tqdm](https://tqdm.github.io/) so you can call `pbar.warn()` or `pbar.error()` on any item inside your loop. The corresponding segment of the progress bar fills with that tag's color, giving you an at-a-glance overview of where issues occurred — without waiting for the loop to finish.
+**tqdm-tag** extends [tqdm](https://tqdm.github.io/) so you can attach custom tags to any item inside your loop. The corresponding segment of the progress bar fills with that tag's color, giving you an at-a-glance overview of status per item — without waiting for the loop to finish.
 
-A `tqdm` bar is often used to replace per-item print statements, which cuts down on clutter but throws away per-item outcomes. tqdm-tag keeps that information by encoding it as color in the bar itself.
 
----
+<table>
+  <tr>
+    <th>tqdm-tag: each item colored by tag</th>
+    <th>plain tqdm: monochrome</th>
+  </tr>
+  <tr>
+    <td><img src="docs/assets/demo-tag.gif" alt="tqdm-tag progress bar with colored warn and error items"/></td>
+    <td><img src="docs/assets/demo-plain.gif" alt="plain tqdm progress bar"/></td>
+  </tr>
+</table>
 
-![demo](docs/assets/demo.svg)
-
-*Top: plain tqdm (monochrome). Bottom: tqdm-tag coloring each processed item by outcome.*
-
----
 
 ## Installation
 
