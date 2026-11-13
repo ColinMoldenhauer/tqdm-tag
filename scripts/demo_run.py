@@ -56,7 +56,7 @@ def run_tag(ncols):
     print("# tqdm-tag")
     pbar = TqdmTag(
         range(N),
-        tags=[Tag("warn", color="yellow"), Tag("error", color="red")],
+        tags=[Tag("warn", color="#ff8c00"), Tag("error", color="red")],
         legend=True,
         ncols=ncols,
     )

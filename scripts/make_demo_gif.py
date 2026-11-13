@@ -61,7 +61,7 @@ def child():
     print("\n\x1b[2m# tqdm-tag: every item colored by its outcome\x1b[0m", flush=True)
     pbar = TqdmTag(
         range(N),
-        tags=[Tag("warn", color="yellow"), Tag("error", color="red")],
+        tags=[Tag("warn", color="#ff8c00"), Tag("error", color="red")],
         colour="green",
         legend=True,
         desc="tqdm-tag  ",
