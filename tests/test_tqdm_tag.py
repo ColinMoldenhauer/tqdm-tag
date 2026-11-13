@@ -871,3 +871,37 @@ def test_colored_bar_boundary_segment_ignores_blend_fraction():
     rendered = f"{bar}"
     assert "\x1b[31m" in rendered
     assert "\x1b[42m" not in rendered
+
+
+def test_colored_bar_blend_uncolored_runner_up_uses_reverse_video():
+    """An uncolored (`None`) runner-up means "terminal default foreground",
+    which has no background escape. Without special handling the glyph's
+    empty part shows the terminal *background* - a visible hole in the
+    bar. Reverse video with the winner as background must be used
+    instead, so the empty part takes the default foreground."""
+    bar = ColoredBar(1.0, default_len=1, segment_colours=[("red", None, 0.5)])
+    rendered = f"{bar}"
+    assert rendered == f"{ColoredBar.REVERSE}\x1b[41m{ColoredBar.UTF[4]}{ColoredBar.COLOUR_RESET}"
+
+
+def test_colored_bar_blend_uncolored_runner_up_hex_winner():
+    bar = ColoredBar(1.0, default_len=1, segment_colours=[("#ff0000", None, 0.5)])
+    rendered = f"{bar}"
+    assert ColoredBar.REVERSE in rendered
+    assert "\x1b[48;2;255;0;0m" in rendered
+
+
+def test_colored_bar_blend_both_uncolored_renders_full_block():
+    """Two uncolored statuses look identical; a partial glyph would only
+    leave a hole, so the segment must render as a plain full block."""
+    bar = ColoredBar(1.0, default_len=1, segment_colours=[(None, None, 0.5)])
+    assert f"{bar}" == ColoredBar.UTF[-1]
+
+
+def test_colored_bar_blend_uncolored_winner_keeps_fg_bg_path():
+    """An uncolored winner is fine as-is (default foreground on the
+    glyph, runner-up as background) - no reverse video needed."""
+    bar = ColoredBar(1.0, default_len=1, segment_colours=[(None, "green", 0.5)])
+    rendered = f"{bar}"
+    assert ColoredBar.REVERSE not in rendered
+    assert "\x1b[42m" in rendered

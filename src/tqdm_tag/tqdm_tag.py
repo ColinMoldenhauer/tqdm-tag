@@ -1207,6 +1207,7 @@ class ColoredBar(Bar):
     UTF = " " + "".join(map(chr, range(0x258F, 0x2587, -1)))
     BLANK = "  "
     COLOUR_RESET = "\x1b[0m"
+    REVERSE = "\x1b[7m"
     COLOUR_RGB = "\x1b[38;2;%d;%d;%dm"
     COLOUR_RGB_BG = "\x1b[48;2;%d;%d;%dm"
     COLOURS = {
@@ -1294,8 +1295,10 @@ class ColoredBar(Bar):
         `TqdmTag._get_colors` - renders as a single glyph split
         proportionally between the two colors (foreground = winner,
         background = runner-up), using the UTF charset's eighths-block
-        staircase. Only available with the UTF charset; ASCII/BLANK fall
-        back to the winner color alone.
+        staircase. An uncolored (`None`) runner-up is rendered via reverse
+        video instead, so its part shows the terminal's default foreground
+        rather than a hole. Only available with the UTF charset; ASCII/BLANK
+        fall back to the winner color alone.
 
         Parameters
         ----------
@@ -1345,8 +1348,21 @@ class ColoredBar(Bar):
                 # clamp away from 0/nsyms so neither status ever fully
                 # vanishes from a segment that's genuinely mixed
                 k = min(max(round(winner_fraction * nsyms), 1), nsyms - 1)
-                sym = charset[k]
-                bar.append(f"{fg or ''}{bg or ''}{sym}{self.COLOUR_RESET}")
+                if bg is not None:
+                    bar.append(f"{fg or ''}{bg}{charset[k]}{self.COLOUR_RESET}")
+                elif fg is not None:
+                    # an uncolored runner-up means "terminal default
+                    # foreground", which has no background escape - leaving
+                    # bg unset would show the terminal *background* there,
+                    # i.e. a hole. Reverse video swaps the roles instead: the
+                    # winner goes in as background and is painted onto the
+                    # glyph, while the glyph's empty part takes the (unset,
+                    # i.e. default) foreground
+                    winner_bg = self._resolve_colour(winner_colour, background=True)
+                    bar.append(f"{self.REVERSE}{winner_bg}{charset[k]}{self.COLOUR_RESET}")
+                else:
+                    # both uncolored: the two statuses look identical anyway
+                    bar.append(sym)
             else:
                 colour = self._resolve_colour(spec[0] if isinstance(spec, tuple) else spec)
                 bar.append(f"{colour}{sym}{self.COLOUR_RESET}" if colour else sym)
