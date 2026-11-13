@@ -28,9 +28,15 @@ for item in pbar:
 
 With `legend=True`, a live second line below the bar shows running counts:
 
-$\texttt{Processing:\ \ 73\%|}\color[RGB]{166,227,161}{\texttt{████████████}}\color[RGB]{249,226,175}{\texttt{███}}\color[RGB]{166,227,161}{\texttt{███}}\color[RGB]{243,139,168}{\texttt{█}}\color[RGB]{170,170,170}{\texttt{████}}\color[RGB]{255,255,255}{\texttt{ |\ 73/100\ [00:03{<}00:01,\ 12.5it/s]}}$
-
-$\color[RGB]{249,226,175}{\texttt{█\ warn:\ 4}}$ &ensp; $\color[RGB]{243,139,168}{\texttt{█\ error:\ 1}}$
+<table>
+  <tr>
+    <th width="50%"><code>legend=True</code></th>
+    <th width="50%"><code>legend=False</code> (default)</th>
+  </tr>
+  <tr>
+    <td colspan="2"><img src="assets/demo-usage.gif" alt="TqdmErrorTag progress bar with a live warn/error legend next to the same bar without legend"/></td>
+  </tr>
+</table>
 
 See the [API reference](api.md) for full class and method documentation.
 
