@@ -13,6 +13,8 @@ Setup (Linux/macOS; on Windows use WSL)
     # binary complains about GLIBC, build it instead: needs Rust/cargo)
     cargo install --git https://github.com/asciinema/agg
     #   ...or download a binary from https://github.com/asciinema/agg/releases
+    # ImageMagick: merges two recordings into one side-by-side GIF (--side-by-side, --usage)
+    sudo apt install -y imagemagick          # or: brew install imagemagick
     # the demo itself
     pip install -e .                         # from the repo root (pulls in tqdm, numpy)
 
@@ -24,7 +26,9 @@ Manual recording (what record_demo.sh does)
     agg --font-size 16 demo.cast docs/assets/demo.gif
 
 ``--only plain|tag`` runs just one of the two bars (both then use the same
-speed, so two recordings line up for a side-by-side view).
+speed, so two recordings line up for a side-by-side view). ``--only usage``
+runs the README's ``TqdmErrorTag`` quick-start example instead (add
+``--no-legend`` for its ``legend=False`` variant).
 """
 import argparse
 import random
@@ -32,11 +36,13 @@ import time
 
 from tqdm import tqdm
 
-from tqdm_tag import Tag, TqdmTag
+from tqdm_tag import Tag, TqdmErrorTag, TqdmTag
 
 N = 40
 PLAIN_DELAY = 0.02  # keep the plain-tqdm part short when shown before tqdm-tag
 DELAY = 0.06
+USAGE_N = 100
+USAGE_DELAY = 0.03
 
 
 def outcomes(n=N, seed=4):
@@ -66,9 +72,21 @@ def run_tag(ncols):
             pbar.tag(res[i])
 
 
+def run_usage(ncols, legend=True):
+    """The README's `TqdmErrorTag` quick-start example, with simulated results."""
+    res = outcomes(USAGE_N)
+    pbar = TqdmErrorTag(range(USAGE_N), legend=legend, desc="Processing", ncols=ncols)
+    for item in pbar:
+        time.sleep(USAGE_DELAY)
+        if res[item] == "warn":  pbar.warn()
+        if res[item] == "error": pbar.error()
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("--only", choices=["plain", "tag"], help="run just one of the two bars")
+    ap.add_argument("--only", choices=["plain", "tag", "usage"],
+                    help="run just one of the two bars, or the quick-start example")
+    ap.add_argument("--no-legend", action="store_true", help="--only usage: run with legend=False")
     ap.add_argument("--ncols", type=int, default=78, help="bar width (keep <= terminal columns)")
     a = ap.parse_args()
 
@@ -76,6 +94,8 @@ def main():
         run_plain(a.ncols, DELAY)  # same speed as the tag run so GIFs line up
     elif a.only == "tag":
         run_tag(a.ncols)
+    elif a.only == "usage":
+        run_usage(a.ncols, legend=not a.no_legend)
     else:
         run_plain(a.ncols, PLAIN_DELAY)
         print()
