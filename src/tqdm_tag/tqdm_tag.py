@@ -1034,8 +1034,8 @@ class TqdmTag(tqdm):
 
         Overrides `tqdm.display`. The legend is only written to a TTY
         (it would corrupt output otherwise) and the cursor is returned
-        to the bar's line afterward so subsequent bar updates overwrite
-        in place.
+        to the end of the bar's line afterward - where `tqdm` itself
+        leaves it - so subsequent bar updates overwrite in place.
 
         `msg=""` is the sentinel `tqdm.close` (with `leave=False`) uses to
         blank the bar's line instead of redrawing it - handled the same way
@@ -1051,14 +1051,17 @@ class TqdmTag(tqdm):
         pos : int, optional
             Line offset for multi-bar displays, same as in `tqdm.display`.
         """
-        super().display(msg=msg, pos=pos)
-        if not self._legend:
-            return
-        if not getattr(self.fp, "isatty", lambda: False)():
-            return
-        self._render_legend_line(self.pos if pos is None else pos, msg)
+        if not self._legend or not getattr(self.fp, "isatty", lambda: False)():
+            return super().display(msg=msg, pos=pos)
+        # format once here (same as tqdm.display would) so the legend
+        # redraw knows how long the bar line is
+        if msg is None:
+            msg = self.__str__()
+        displayed = super().display(msg=msg, pos=pos)
+        self._render_legend_line(self.pos if pos is None else pos, msg, col=disp_len(msg))
+        return displayed
 
-    def _render_legend_line(self, pos, msg):
+    def _render_legend_line(self, pos, msg, col=0):
         """Draw, or blank, this bar's legend line and return the cursor.
 
         The legend is drawn one row below this bar's own row (`pos`, in the
@@ -1067,8 +1070,10 @@ class TqdmTag(tqdm):
         multi-bar stacks - so multiple simultaneously-live `TqdmTag` bars
         each land their legend under their own bar rather than all
         clustering under the topmost one. The cursor is returned to the
-        shared reference row afterward, matching how `tqdm.display`/`clear`
-        leave it.
+        shared reference row afterward, at column `col`, matching how
+        `tqdm.display` (end of the bar line) and `clear` (column 0) leave
+        it - parking it at column 0 after a redraw would leave a visible
+        cursor block sitting on the bar's first character.
 
         `msg=""` - the sentinel used by `tqdm.close(leave=False)` and by
         `clear()` - blanks the legend line instead of drawing it, so
@@ -1090,6 +1095,8 @@ class TqdmTag(tqdm):
             This bar's row offset from the shared reference row.
         msg : str or None
             `""` to blank the line; anything else draws the current legend.
+        col : int, optional
+            Column to leave the cursor at on the reference row (default `0`).
         """
         if msg == "":
             if not self._legend_active:
@@ -1103,7 +1110,9 @@ class TqdmTag(tqdm):
         line_pos = abs(pos) + 1
         move_down = "\n" * line_pos
         move_up = _term_move_up() * line_pos
-        self.fp.write(f"{move_down}\r{content:<{width}}\r{move_up}")
+        # guarded: most terminals treat a 0-column move (ESC[0C) as 1 column
+        move_right = f"\x1b[{col}C" if col > 0 else ""
+        self.fp.write(f"{move_down}\r{content:<{width}}\r{move_up}{move_right}")
         self.fp.flush()
         self._legend_active = bool(content)
 

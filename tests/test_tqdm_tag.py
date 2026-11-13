@@ -18,14 +18,17 @@ class FakeTTY(io.StringIO):
         return True
 
 
-def render_screen(raw):
+def render_screen(raw, return_cursor=False):
     """Replay a raw ANSI/carriage-return stream into the final visible
     terminal lines it would leave behind - `\\r`, `\\n` (with the CRLF
     translation real cooked-mode TTYs apply, which is what `TqdmTag` and
     `tqdm` itself assume) and cursor-up (`ESC[A`) are interpreted; other
     escape codes (colour, etc.) are stripped. Needed because a raw
     substring check (e.g. `"ok:" in out.getvalue()`) sees every
-    intermediate frame ever written, not just what's left on screen."""
+    intermediate frame ever written, not just what's left on screen.
+    Cursor-forward (`ESC[nC`) is interpreted too; with `return_cursor`,
+    returns `(lines, (row, col))` so tests can check where the cursor was
+    left."""
     lines = [""]
     row = col = 0
 
@@ -44,8 +47,11 @@ def render_screen(raw):
         if c == "\x1b":
             m = re.match(r"\x1b\[(\d*)([A-Za-z])", raw[i:])
             if m:
+                count = int(m.group(1)) if m.group(1) else 1
                 if m.group(2) == "A":
-                    row = max(0, row - (int(m.group(1)) if m.group(1) else 1))
+                    row = max(0, row - count)
+                elif m.group(2) == "C":
+                    col += max(count, 1)  # ESC[0C moves 1, like real terminals
                 i += m.end()
                 continue
             i += 1
@@ -61,6 +67,8 @@ def render_screen(raw):
         else:
             put(c)
             i += 1
+    if return_cursor:
+        return lines, (row, col)
     return lines
 
 
@@ -444,6 +452,21 @@ def test_legend_survives_tqdm_write_clear():
     assert any("hello from write()" in line for line in screen)
     assert any("100%" in line and "3/3" in line for line in screen)
     assert sum("ok: 3" in line for line in screen) == 1
+
+
+def test_legend_redraw_leaves_cursor_at_end_of_bar_line():
+    """After drawing the legend, the cursor must go back to where `tqdm`
+    itself leaves it - the end of the bar line - not column 0. Parking it
+    at column 0 shows the terminal cursor as a block over the bar's first
+    character for the whole run."""
+    out = FakeTTY()
+    pbar = TqdmTag(range(10), file=out, legend=True, mininterval=0, ncols=60)
+    pbar.tag("ok", color="green", index=0)
+    pbar.refresh()
+    lines, (row, col) = render_screen(out.getvalue(), return_cursor=True)
+    assert "ok: 1" in lines[row + 1]
+    assert col == len(lines[row].rstrip()) > 0
+    pbar.close()
 
 
 def test_iter_guard_preserves_out_of_order_tag_without_total():
