@@ -15,7 +15,8 @@ from tqdm import tqdm
 
 from tqdm_tag import Tag, TqdmTag
 
-N = 60
+N = 40
+PLAIN_DELAY = 0.02  # keep the plain-tqdm part short
 DELAY = 0.06
 
 rng = random.Random(4)
@@ -23,7 +24,7 @@ res = ["error" if (r := rng.random()) < 0.07 else "warn" if r < 0.22 else "ok" f
 
 print("# plain tqdm")
 for _ in tqdm(range(N), ncols=78):
-    time.sleep(DELAY)
+    time.sleep(PLAIN_DELAY)
 
 print("\n# tqdm-tag")
 pbar = TqdmTag(
