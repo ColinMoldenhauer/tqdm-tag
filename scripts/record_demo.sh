@@ -27,9 +27,13 @@ while [[ $# -gt 0 ]]; do
   shift
 done
 
-# narrower terminals for side-by-side so each GIF stays readable at half width
-if [[ $side_by_side -eq 1 ]]; then cols="${cols:-64}"; else cols="${cols:-80}"; fi
-rows="${rows:-14}"
+# side-by-side: narrower terminals so each GIF stays readable at half width, and
+# just 4 rows (title, bar, legend, final cursor line) so the GIFs carry no empty space
+if [[ $side_by_side -eq 1 ]]; then
+  cols="${cols:-64}" rows="${rows:-4}"
+else
+  cols="${cols:-80}" rows="${rows:-14}"
+fi
 ncols=$((cols - 2))
 
 for tool in asciinema agg; do
