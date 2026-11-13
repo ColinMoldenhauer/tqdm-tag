@@ -54,7 +54,7 @@ def child():
     time.sleep(0.8)
 
     print("\n\x1b[2m# plain tqdm: one color, no idea what went wrong\x1b[0m", flush=True)
-    for i in tqdm(range(N), desc="plain tqdm", ncols=78):
+    for i in tqdm(range(N), desc="plain tqdm", ncols=78, colour="green"):
         time.sleep(DELAY)
     time.sleep(0.6)
 
@@ -62,6 +62,7 @@ def child():
     pbar = TqdmTag(
         range(N),
         tags=[Tag("warn", color="yellow"), Tag("error", color="red")],
+        colour="green",
         legend=True,
         desc="tqdm-tag  ",
         ncols=78,
