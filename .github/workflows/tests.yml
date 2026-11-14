@@ -3,9 +3,13 @@ name: Tests
 on:
   push:
     branches: [main]
-    tags: ["v*"]
   pull_request:
     branches: [main]
+  # release tags run these tests via publish.yml, which publishes only if they pass
+  workflow_call:
+
+permissions:
+  contents: read
 
 jobs:
   unit:
@@ -14,7 +18,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        # ubuntu-24.04, not ubuntu-latest: setup-python has no Python 3.8/3.9 builds
+        # for Ubuntu 26.04, which ubuntu-latest moved to in October 2026
+        os: [ubuntu-24.04, windows-latest, macos-latest]
         python: ["3.8", "3.9", "3.10", "3.11", "3.12"]
     steps:
       - uses: actions/checkout@v4
