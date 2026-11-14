@@ -10,14 +10,15 @@
 # Side-by-side GIFs are two recordings merged frame by frame into one GIF (needs
 # ImageMagick): two separate GIFs on a page each animate on their own clock and drift apart.
 #
-# Options: --out-dir DIR (default docs/assets)  --cols N  --rows N  --font-size N  -h|--help
+# Options: --out-dir DIR (default docs/assets)  --cols N  --rows N  --font-size N
+#          --gap PX (transparent gap between side-by-side halves, default 8)  -h|--help
 set -euo pipefail
 
 side_by_side=0
 usage=0
 repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 out_dir="$repo/docs/assets"
-cols="" rows="" font_size=16
+cols="" rows="" font_size=16 gap=8
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -27,7 +28,8 @@ while [[ $# -gt 0 ]]; do
     --cols)      cols="$2"; shift ;;
     --rows)      rows="$2"; shift ;;
     --font-size) font_size="$2"; shift ;;
-    -h|--help)   sed -n '2,13p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    --gap)       gap="$2"; shift ;;
+    -h|--help)   sed -n '2,14p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "unknown option: $1" >&2; exit 1 ;;
   esac
   shift
@@ -69,7 +71,7 @@ record() {  # record GIF [demo_run args...] -> GIF
   agg --font-size "$font_size" "$tmp/rec.cast" "$gif"
 }
 
-hstack() {  # hstack LEFT RIGHT OUT: merge two GIFs frame by frame into one
+hstack() {  # hstack LEFT RIGHT OUT: merge two GIFs frame by frame, $gap px apart
   # Both recordings run the same workload at the same pace, so agg emits the same
   # number of frames with (near-)identical delays; pair frame i with frame i and
   # keep the left GIF's delays.
@@ -84,9 +86,12 @@ hstack() {  # hstack LEFT RIGHT OUT: merge two GIFs frame by frame into one
   rm -rf "$d"; mkdir -p "$d"
   convert "$left" -coalesce "$d/l_%04d.png"
   convert "$right" -coalesce "$d/r_%04d.png"
+  local height; height="$(identify -format "%h" "$d/l_0000.png")"
+  local -a spacer=()  # transparent column, so the page background shows between the halves
+  [[ $gap -gt 0 ]] && spacer=(\( -size "${gap}x${height}" xc:none \))
   for ((i = 0; i < ${#delays[@]}; i++)); do
     printf -v f "%04d" "$i"
-    convert "$d/l_$f.png" "$d/r_$f.png" +append +repage "$d/f_$f.png"
+    convert "$d/l_$f.png" ${spacer[@]+"${spacer[@]}"} "$d/r_$f.png" +append +repage "$d/f_$f.png"
     args+=(-delay "${delays[i]}" "$d/f_$f.png")
   done
   convert -loop 0 "${args[@]}" -layers Optimize "$out"
